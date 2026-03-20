@@ -12,6 +12,7 @@ dist
 dist-ssr
 *.local
 .tools/
+.codex/
 preview*.log
 preview*.err
 
