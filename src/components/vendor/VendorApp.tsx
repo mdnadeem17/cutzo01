@@ -1,12 +1,5 @@
-import { useState } from "react";
-import {
-  initialAvailabilitySlots,
-  initialBlockedDates,
-  initialVendorBookings,
-  initialVendorProfile,
-  initialVendorServices,
-  initialWorkingHours,
-} from "./data";
+import { useEffect, useState } from "react";
+import { loadVendorBookings, updateStoredBookingStatus } from "../trimo/marketplaceStorage";
 import AvailabilityScreen from "./AvailabilityScreen";
 import BookingsScreen from "./BookingsScreen";
 import DashboardScreen from "./DashboardScreen";
@@ -14,7 +7,11 @@ import EarningsScreen from "./EarningsScreen";
 import ProfileScreen from "./ProfileScreen";
 import ServicesScreen from "./ServicesScreen";
 import VendorBottomNav from "./VendorBottomNav";
-import { ShopOwnerRecord } from "./storage";
+import {
+  createDefaultAvailabilitySlots,
+  createDefaultServiceCatalog,
+  ShopOwnerRecord,
+} from "./storage";
 import {
   AvailabilitySlot,
   BlockedDate,
@@ -39,45 +36,76 @@ interface Props {
   onOwnerRecordChange?: (user: ShopOwnerRecord) => void;
 }
 
+const fallbackWorkingHours: WorkingHours = {
+  start: "09:00",
+  end: "21:00",
+};
+
+const emptyProfile: VendorProfile = {
+  shopName: "",
+  ownerName: "",
+  address: "",
+  phone: "",
+  images: [],
+};
+
 const createProfileFromOwner = (ownerRecord?: ShopOwnerRecord): VendorProfile => {
   if (!ownerRecord) {
-    return initialVendorProfile;
+    return emptyProfile;
   }
 
   return {
-    shopName: ownerRecord.shopName || initialVendorProfile.shopName,
-    ownerName: ownerRecord.name || initialVendorProfile.ownerName,
-    address: ownerRecord.address || initialVendorProfile.address,
-    phone: ownerRecord.phone || initialVendorProfile.phone,
-    images: ownerRecord.image
-      ? [ownerRecord.image, ...initialVendorProfile.images.slice(0, 2)]
-      : initialVendorProfile.images,
+    shopName: ownerRecord.shopName,
+    ownerName: ownerRecord.name,
+    address: ownerRecord.address,
+    phone: ownerRecord.phone,
+    images: ownerRecord.images,
   };
 };
 
 const createServicesFromOwner = (ownerRecord?: ShopOwnerRecord): VendorService[] => {
-  if (!ownerRecord || ownerRecord.services.length === 0) {
-    return initialVendorServices;
+  if (!ownerRecord) {
+    return [];
   }
 
-  return ownerRecord.services.map((serviceName, index) => ({
-    id: `service-${index + 1}`,
-    name: serviceName,
-    durationMinutes: index % 2 === 0 ? 30 : 45,
-    price: ownerRecord.startingPrice + index * 80,
-  }));
+  if (ownerRecord.serviceCatalog.length > 0) {
+    return ownerRecord.serviceCatalog;
+  }
+
+  return createDefaultServiceCatalog(ownerRecord.services, ownerRecord.startingPrice);
+};
+
+const createSlotsFromOwner = (ownerRecord?: ShopOwnerRecord): AvailabilitySlot[] => {
+  if (!ownerRecord) {
+    return [];
+  }
+
+  if (ownerRecord.availabilitySlots.length > 0) {
+    return ownerRecord.availabilitySlots;
+  }
+
+  return createDefaultAvailabilitySlots(ownerRecord.workingHours);
 };
 
 export default function VendorApp({ onExit, ownerRecord, onOwnerRecordChange }: Props) {
   const [screen, setScreen] = useState<VendorScreen>("dashboard");
-  const [bookings, setBookings] = useState<VendorBooking[]>(initialVendorBookings);
+  const [bookings, setBookings] = useState<VendorBooking[]>([]);
   const [services, setServices] = useState<VendorService[]>(createServicesFromOwner(ownerRecord));
-  const [slots, setSlots] = useState<AvailabilitySlot[]>(initialAvailabilitySlots);
   const [workingHours, setWorkingHours] = useState<WorkingHours>(
-    ownerRecord?.workingHours ?? initialWorkingHours
+    ownerRecord?.workingHours ?? fallbackWorkingHours
   );
-  const [blockedDates, setBlockedDates] = useState<BlockedDate[]>(initialBlockedDates);
+  const [slots, setSlots] = useState<AvailabilitySlot[]>(createSlotsFromOwner(ownerRecord));
+  const [blockedDates, setBlockedDates] = useState<BlockedDate[]>(ownerRecord?.blockedDates ?? []);
   const [profile, setProfile] = useState<VendorProfile>(createProfileFromOwner(ownerRecord));
+
+  useEffect(() => {
+    setProfile(createProfileFromOwner(ownerRecord));
+    setServices(createServicesFromOwner(ownerRecord));
+    setWorkingHours(ownerRecord?.workingHours ?? fallbackWorkingHours);
+    setSlots(createSlotsFromOwner(ownerRecord));
+    setBlockedDates(ownerRecord?.blockedDates ?? []);
+    setBookings(ownerRecord ? loadVendorBookings(ownerRecord.userId) : []);
+  }, [ownerRecord]);
 
   const mainTabs: VendorTab[] = ["dashboard", "bookings", "services", "profile"];
   const showBottomNav = mainTabs.includes(screen as VendorTab);
@@ -94,7 +122,9 @@ export default function VendorApp({ onExit, ownerRecord, onOwnerRecordChange }: 
   const syncOwnerRecord = (
     nextProfile: VendorProfile = profile,
     nextServices: VendorService[] = services,
-    nextWorkingHours: WorkingHours = workingHours
+    nextWorkingHours: WorkingHours = workingHours,
+    nextSlots: AvailabilitySlot[] = slots,
+    nextBlockedDates: BlockedDate[] = blockedDates
   ) => {
     if (!ownerRecord || !onOwnerRecordChange) {
       return;
@@ -107,19 +137,31 @@ export default function VendorApp({ onExit, ownerRecord, onOwnerRecordChange }: 
       shopName: nextProfile.shopName,
       address: nextProfile.address,
       services: nextServices.map((service) => service.name),
+      serviceCatalog: nextServices,
       startingPrice:
         nextServices.length > 0
           ? Math.min(...nextServices.map((service) => service.price))
           : ownerRecord.startingPrice,
       workingHours: nextWorkingHours,
+      availabilitySlots: nextSlots,
+      blockedDates: nextBlockedDates,
+      images: nextProfile.images,
       image: nextProfile.images[0] ?? ownerRecord.image,
     });
   };
 
+  const refreshBookings = () => {
+    if (!ownerRecord) {
+      setBookings([]);
+      return;
+    }
+
+    setBookings(loadVendorBookings(ownerRecord.userId));
+  };
+
   const updateBookingStatus = (id: string, status: VendorBooking["status"]) => {
-    setBookings((current) =>
-      current.map((booking) => (booking.id === id ? { ...booking, status } : booking))
-    );
+    updateStoredBookingStatus(id, status);
+    refreshBookings();
   };
 
   const createService = (service: Omit<VendorService, "id">) => {
@@ -131,7 +173,7 @@ export default function VendorApp({ onExit, ownerRecord, onOwnerRecordChange }: 
       },
     ];
     setServices(nextServices);
-    syncOwnerRecord(profile, nextServices, workingHours);
+    syncOwnerRecord(profile, nextServices, workingHours, slots, blockedDates);
   };
 
   const updateService = (id: string, nextService: Omit<VendorService, "id">) => {
@@ -139,43 +181,53 @@ export default function VendorApp({ onExit, ownerRecord, onOwnerRecordChange }: 
       service.id === id ? { ...service, ...nextService } : service
     );
     setServices(nextServices);
-    syncOwnerRecord(profile, nextServices, workingHours);
+    syncOwnerRecord(profile, nextServices, workingHours, slots, blockedDates);
   };
 
   const deleteService = (id: string) => {
     const nextServices = services.filter((service) => service.id !== id);
     setServices(nextServices);
-    syncOwnerRecord(profile, nextServices, workingHours);
+    syncOwnerRecord(profile, nextServices, workingHours, slots, blockedDates);
   };
 
   const toggleSlot = (id: string) => {
-    setSlots((current) =>
-      current.map((slot) => (slot.id === id ? { ...slot, enabled: !slot.enabled } : slot))
-    );
+    const nextSlots = slots.map((slot) => (slot.id === id ? { ...slot, enabled: !slot.enabled } : slot));
+    setSlots(nextSlots);
+    syncOwnerRecord(profile, services, workingHours, nextSlots, blockedDates);
   };
 
   const handleSaveProfile = (nextProfile: VendorProfile) => {
     setProfile(nextProfile);
-    syncOwnerRecord(nextProfile, services, workingHours);
+    syncOwnerRecord(nextProfile, services, workingHours, slots, blockedDates);
   };
 
   const handleUpdateWorkingHours = (nextWorkingHours: WorkingHours) => {
+    const nextSlots = createDefaultAvailabilitySlots(nextWorkingHours).map((slot) => {
+      const existingSlot = slots.find((current) => current.time === slot.time);
+      return existingSlot ? { ...slot, enabled: existingSlot.enabled } : slot;
+    });
+
     setWorkingHours(nextWorkingHours);
-    syncOwnerRecord(profile, services, nextWorkingHours);
+    setSlots(nextSlots);
+    syncOwnerRecord(profile, services, nextWorkingHours, nextSlots, blockedDates);
   };
 
   const addBlockedDate = (blockedDate: Omit<BlockedDate, "id">) => {
-    setBlockedDates((current) => [
-      ...current,
+    const nextBlockedDates = [
+      ...blockedDates,
       {
         id: `blocked-${Date.now()}`,
         ...blockedDate,
       },
-    ]);
+    ];
+    setBlockedDates(nextBlockedDates);
+    syncOwnerRecord(profile, services, workingHours, slots, nextBlockedDates);
   };
 
   const removeBlockedDate = (id: string) => {
-    setBlockedDates((current) => current.filter((entry) => entry.id !== id));
+    const nextBlockedDates = blockedDates.filter((entry) => entry.id !== id);
+    setBlockedDates(nextBlockedDates);
+    syncOwnerRecord(profile, services, workingHours, slots, nextBlockedDates);
   };
 
   return (
@@ -215,11 +267,7 @@ export default function VendorApp({ onExit, ownerRecord, onOwnerRecordChange }: 
       )}
 
       {screen === "profile" && (
-        <ProfileScreen
-          profile={profile}
-          onSaveProfile={handleSaveProfile}
-          onExit={onExit}
-        />
+        <ProfileScreen profile={profile} onSaveProfile={handleSaveProfile} onExit={onExit} />
       )}
 
       {screen === "availability" && (
@@ -245,9 +293,7 @@ export default function VendorApp({ onExit, ownerRecord, onOwnerRecordChange }: 
         />
       )}
 
-      {showBottomNav && (
-        <VendorBottomNav active={screen as VendorTab} onTab={setScreen} />
-      )}
+      {showBottomNav && <VendorBottomNav active={screen as VendorTab} onTab={setScreen} />}
     </>
   );
 }

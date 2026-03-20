@@ -9,14 +9,28 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { useState } from "react";
-import { CATEGORIES, SHOPS } from "./data";
+import { CATEGORIES } from "./data";
 import { Shop } from "./types";
 
 interface Props {
+  shops: Shop[];
   onShopSelect: (shop: Shop) => void;
 }
 
-function ShopCard({ shop, onSelect }: { shop: Shop; onSelect: () => void }) {
+interface Coordinates {
+  lat: number;
+  lng: number;
+}
+
+interface VisibleShop extends Shop {
+  distanceKm: number | null;
+}
+
+function ShopCard({ shop, onSelect }: { shop: VisibleShop; onSelect: () => void }) {
+  const ratingLabel = shop.reviewCount > 0 ? shop.rating.toFixed(1) : "New";
+  const locationLine =
+    shop.distanceKm !== null ? `${shop.distance} away / ${shop.locationLabel}` : shop.locationLabel;
+
   return (
     <div
       className="mb-4 cursor-pointer overflow-hidden rounded-[16px] bg-card card-shadow scale-tap transition-transform"
@@ -29,8 +43,10 @@ function ShopCard({ shop, onSelect }: { shop: Shop; onSelect: () => void }) {
         </div>
         <div className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 backdrop-blur-sm">
           <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-          <span className="text-xs font-semibold text-foreground">{shop.rating}</span>
-          <span className="text-xs text-muted-foreground">({shop.reviewCount})</span>
+          <span className="text-xs font-semibold text-foreground">{ratingLabel}</span>
+          <span className="text-xs text-muted-foreground">
+            ({shop.reviewCount > 0 ? shop.reviewCount : 0})
+          </span>
         </div>
       </div>
 
@@ -42,14 +58,14 @@ function ShopCard({ shop, onSelect }: { shop: Shop; onSelect: () => void }) {
 
         <div className="mb-3 flex items-center gap-1 text-muted-foreground">
           <MapPin className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate text-xs">
-            {shop.distance} away / {shop.address.split(",")[1]?.trim()}
-          </span>
+          <span className="truncate text-xs">{locationLine}</span>
         </div>
 
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <div>
-            <span className="text-sm font-bold text-accent">Haircut from Rs {shop.startingPrice}</span>
+            <span className="text-sm font-bold text-accent">
+              {shop.startingPrice > 0 ? `Services from Rs ${shop.startingPrice}` : "Pricing not set"}
+            </span>
           </div>
           <div className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1">
             <Clock className="h-3 w-3 text-muted-foreground" />
@@ -85,16 +101,47 @@ function SkeletonCard() {
   );
 }
 
-const parseDistance = (value: string) => Number.parseFloat(value.replace(/[^\d.]/g, "")) || 999;
+const parseGpsLocation = (value?: string): Coordinates | null => {
+  if (!value) {
+    return null;
+  }
+
+  const match = value.match(/Lat\s*(-?\d+(?:\.\d+)?),\s*Lng\s*(-?\d+(?:\.\d+)?)/i);
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    lat: Number(match[1]),
+    lng: Number(match[2]),
+  };
+};
+
+const calculateDistanceKm = (source: Coordinates, target: Coordinates) => {
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const latDelta = toRadians(target.lat - source.lat);
+  const lngDelta = toRadians(target.lng - source.lng);
+  const a =
+    Math.sin(latDelta / 2) * Math.sin(latDelta / 2) +
+    Math.cos(toRadians(source.lat)) *
+      Math.cos(toRadians(target.lat)) *
+      Math.sin(lngDelta / 2) *
+      Math.sin(lngDelta / 2);
+
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
 
 const getTrendingScore = (shop: Shop) => shop.rating * 100 + shop.bookingCount;
 
-export default function HomeScreen({ onShopSelect }: Props) {
+export default function HomeScreen({ shops, onShopSelect }: Props) {
   const [activeCategory, setActiveCategory] = useState("All");
   const [searchText, setSearchText] = useState("");
   const [loading] = useState(false);
   const [locationState, setLocationState] = useState<"idle" | "loading" | "granted" | "denied">("idle");
   const [locationMessage, setLocationMessage] = useState("");
+  const [currentCoords, setCurrentCoords] = useState<Coordinates | null>(null);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : "Good Evening";
@@ -112,9 +159,13 @@ export default function HomeScreen({ onShopSelect }: Props) {
     setLocationMessage("Finding barber shops near you...");
 
     navigator.geolocation.getCurrentPosition(
-      () => {
+      (position) => {
+        setCurrentCoords({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
         setLocationState("granted");
-        setLocationMessage("Showing nearby barber shops around your current location.");
+        setLocationMessage("Showing barber shops with live location data near you.");
       },
       () => {
         setLocationState("denied");
@@ -133,10 +184,31 @@ export default function HomeScreen({ onShopSelect }: Props) {
     setLocationMessage("");
   };
 
-  const searchedShops = SHOPS.filter((shop) => {
+  const visibleShops: VisibleShop[] = shops.map((shop) => {
+    if (!currentCoords) {
+      return { ...shop, distanceKm: null };
+    }
+
+    const targetCoords = parseGpsLocation(shop.gpsLocation);
+
+    if (!targetCoords) {
+      return { ...shop, distanceKm: null };
+    }
+
+    const distanceKm = calculateDistanceKm(currentCoords, targetCoords);
+
+    return {
+      ...shop,
+      distanceKm,
+      distance: `${distanceKm.toFixed(1)} km`,
+    };
+  });
+
+  const searchedShops = visibleShops.filter((shop) => {
     const matchesSearch =
       shop.name.toLowerCase().includes(searchText.toLowerCase()) ||
-      shop.address.toLowerCase().includes(searchText.toLowerCase());
+      shop.address.toLowerCase().includes(searchText.toLowerCase()) ||
+      shop.locationLabel.toLowerCase().includes(searchText.toLowerCase());
 
     return matchesSearch;
   });
@@ -145,13 +217,13 @@ export default function HomeScreen({ onShopSelect }: Props) {
     activeCategory === "Near Me"
       ? locationState === "granted"
         ? searchedShops
-            .filter((shop) => parseDistance(shop.distance) <= 1.5)
-            .sort((left, right) => parseDistance(left.distance) - parseDistance(right.distance))
+            .filter((shop) => shop.distanceKm !== null)
+            .sort((left, right) => (left.distanceKm ?? 999) - (right.distanceKm ?? 999))
         : []
       : activeCategory === "Trending"
         ? [...searchedShops]
             .sort((left, right) => getTrendingScore(right) - getTrendingScore(left))
-            .slice(0, 4)
+            .slice(0, 6)
         : searchedShops;
 
   const resultLabel =
@@ -248,7 +320,7 @@ export default function HomeScreen({ onShopSelect }: Props) {
           >
             <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-white" />
             <p className="text-xs leading-relaxed text-[#E0E7FF]">
-              Trending shops are ranked by stronger ratings and more completed bookings on TRIMO.
+              Trending shops are ranked using live bookings and customer reviews from this app.
             </p>
           </div>
         )}
@@ -260,7 +332,7 @@ export default function HomeScreen({ onShopSelect }: Props) {
             {filtered.length} {resultLabel}
           </p>
           <p className="text-xs font-semibold text-accent">
-            {activeCategory === "Trending" ? "TRIMO Picks" : "Live Availability"}
+            {activeCategory === "Trending" ? "Live Ranking" : "Live Availability"}
           </p>
         </div>
 
@@ -276,12 +348,16 @@ export default function HomeScreen({ onShopSelect }: Props) {
             <p className="font-medium">
               {activeCategory === "Near Me" && locationState === "denied"
                 ? "Location permission needed"
-                : "No shops found"}
+                : shops.length === 0
+                  ? "No live shops yet"
+                  : "No shops found"}
             </p>
             <p className="mt-1 text-xs">
               {activeCategory === "Near Me" && locationState === "denied"
                 ? "Please allow location to find nearby shops"
-                : "Try a different search or filter"}
+                : shops.length === 0
+                  ? "A shop will appear here once an owner finishes setup and publishes services."
+                  : "Try a different search or filter"}
             </p>
           </div>
         )}

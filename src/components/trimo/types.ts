@@ -13,12 +13,15 @@ export type Screen =
 
 export interface Shop {
   id: string;
+  ownerId: string;
   name: string;
   image: string;
   rating: number;
   reviewCount: number;
   bookingCount: number;
   distance: string;
+  locationLabel: string;
+  gpsLocation?: string;
   startingPrice: number;
   nextSlot: string;
   address: string;
@@ -27,6 +30,9 @@ export interface Shop {
   about: string;
   openTime: string;
   closeTime: string;
+  services: Service[];
+  availabilitySlots: TimeSlot[];
+  blockedDates: string[];
 }
 
 export interface Service {
@@ -47,6 +53,8 @@ export interface Booking {
   id: string;
   shopId: string;
   userId: string;
+  customerName?: string;
+  customerPhone?: string;
   shopName: string;
   shopImage: string;
   service: string;
@@ -54,7 +62,8 @@ export interface Booking {
   time: string;
   address: string;
   price: number;
-  status: "confirmed" | "cancelled" | "completed";
+  status: "pending" | "confirmed" | "cancelled" | "completed";
+  createdAt?: string;
 }
 
 export interface Review {

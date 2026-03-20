@@ -1,3 +1,11 @@
+import { formatHourLabel } from "./utils";
+import {
+  AvailabilitySlot,
+  BlockedDate,
+  VendorService,
+  WorkingHours,
+} from "./types";
+
 export interface ShopOwnerRecord {
   userId: string;
   role: "shop_owner";
@@ -7,12 +15,13 @@ export interface ShopOwnerRecord {
   location: string;
   address: string;
   services: string[];
+  serviceCatalog: VendorService[];
   startingPrice: number;
-  workingHours: {
-    start: string;
-    end: string;
-  };
+  workingHours: WorkingHours;
+  availabilitySlots: AvailabilitySlot[];
+  blockedDates: BlockedDate[];
   image?: string;
+  images: string[];
   gpsLocation?: string;
   createdAt: string;
   authProvider: "phone" | "google";
@@ -29,6 +38,91 @@ const emptyDatabase = (): TrimoDatabase => ({ users: {} });
 
 const hasWindow = () => typeof window !== "undefined";
 
+const defaultWorkingHours: WorkingHours = {
+  start: "09:00",
+  end: "21:00",
+};
+
+const hourRange = (start: number, end: number) => {
+  const slots: number[] = [];
+
+  for (let hour = start; hour < end; hour += 1) {
+    slots.push(hour);
+  }
+
+  return slots;
+};
+
+export const createDefaultAvailabilitySlots = (workingHours: WorkingHours): AvailabilitySlot[] => {
+  const startHour = Number.parseInt(workingHours.start.split(":")[0] ?? "9", 10);
+  const endHour = Number.parseInt(workingHours.end.split(":")[0] ?? "21", 10);
+  const safeStart = Number.isFinite(startHour) ? startHour : 9;
+  const safeEnd = Number.isFinite(endHour) ? endHour : 21;
+  const hours = safeEnd > safeStart ? hourRange(safeStart, safeEnd) : hourRange(9, 21);
+
+  return hours.map((hour, index) => ({
+    id: `slot-${index + 1}`,
+    time: formatHourLabel(`${String(hour).padStart(2, "0")}:00`),
+    enabled: true,
+  }));
+};
+
+export const createDefaultServiceCatalog = (
+  serviceNames: string[],
+  startingPrice: number
+): VendorService[] =>
+  serviceNames
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .map((name, index) => ({
+      id: `service-${index + 1}`,
+      name,
+      durationMinutes: 30,
+      price: startingPrice > 0 ? startingPrice : 0,
+    }));
+
+const normalizeShopOwnerRecord = (user: Partial<ShopOwnerRecord>): ShopOwnerRecord => {
+  const workingHours = user.workingHours ?? defaultWorkingHours;
+  const serviceCatalog =
+    user.serviceCatalog && user.serviceCatalog.length > 0
+      ? user.serviceCatalog
+      : createDefaultServiceCatalog(user.services ?? [], user.startingPrice ?? 0);
+  const images =
+    user.images && user.images.length > 0
+      ? user.images.filter(Boolean)
+      : user.image
+        ? [user.image]
+        : [];
+  const availabilitySlots =
+    user.availabilitySlots && user.availabilitySlots.length > 0
+      ? user.availabilitySlots
+      : createDefaultAvailabilitySlots(workingHours);
+
+  return {
+    userId: user.userId ?? `owner-${Date.now()}`,
+    role: "shop_owner",
+    name: user.name ?? "",
+    phone: user.phone ?? "",
+    shopName: user.shopName ?? "",
+    location: user.location ?? "",
+    address: user.address ?? "",
+    services: serviceCatalog.map((service) => service.name),
+    serviceCatalog,
+    startingPrice:
+      serviceCatalog.length > 0
+        ? Math.min(...serviceCatalog.map((service) => service.price))
+        : user.startingPrice ?? 0,
+    workingHours,
+    availabilitySlots,
+    blockedDates: user.blockedDates ?? [],
+    image: images[0] ?? user.image,
+    images,
+    gpsLocation: user.gpsLocation,
+    createdAt: user.createdAt ?? new Date().toISOString(),
+    authProvider: user.authProvider ?? "phone",
+  };
+};
+
 export const readDatabase = (): TrimoDatabase => {
   if (!hasWindow()) {
     return emptyDatabase();
@@ -41,8 +135,15 @@ export const readDatabase = (): TrimoDatabase => {
   }
 
   try {
-    const parsed = JSON.parse(raw) as TrimoDatabase;
-    return parsed?.users ? parsed : emptyDatabase();
+    const parsed = JSON.parse(raw) as { users?: Record<string, Partial<ShopOwnerRecord>> };
+    const users = Object.fromEntries(
+      Object.entries(parsed?.users ?? {}).map(([userId, user]) => [
+        userId,
+        normalizeShopOwnerRecord({ ...user, userId }),
+      ])
+    );
+
+    return { users };
   } catch {
     return emptyDatabase();
   }
@@ -58,9 +159,10 @@ const writeDatabase = (database: TrimoDatabase) => {
 
 export const saveShopOwner = (user: ShopOwnerRecord) => {
   const database = readDatabase();
-  database.users[user.userId] = user;
+  const normalizedUser = normalizeShopOwnerRecord(user);
+  database.users[normalizedUser.userId] = normalizedUser;
   writeDatabase(database);
-  return user;
+  return normalizedUser;
 };
 
 export const findShopOwnerByPhone = (phone: string) => {
@@ -109,7 +211,7 @@ export const normalizePhone = (value: string) => {
 };
 
 export const formatPhoneForInput = (value: string) => {
-  const digits = value.replace(/\D/g, "").slice(-10);
+  const digits = value.replace(/\D/g, "").slice(0, 10);
 
   if (digits.length <= 5) {
     return digits;

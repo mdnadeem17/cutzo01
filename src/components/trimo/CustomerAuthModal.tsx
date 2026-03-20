@@ -96,7 +96,9 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
       return;
     }
 
-    setGeneratedOtp(String(Math.floor(100000 + Math.random() * 900000)));
+    const nextOtp = String(Math.floor(100000 + Math.random() * 900000));
+    console.log("Generated OTP:", nextOtp); // Added for testing purposes
+    setGeneratedOtp(nextOtp);
     setOtpValue("");
     setSetupDraft(createDraft({ phone: normalizedPhone, authProvider: "phone" }));
     setErrorMessage("");
@@ -133,7 +135,7 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
 
     setSetupDraft(
       createDraft({
-        name: "Aarav Mehta",
+        name: "",
         phone: googlePhone,
         authProvider: "google",
       })
@@ -179,7 +181,7 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
       role: "customer",
       name: setupDraft.name.trim(),
       phone: setupDraft.phone,
-      location: setupDraft.location.trim() || "Bengaluru",
+      location: setupDraft.location.trim() || "Location pending",
       gpsLocation: setupDraft.gpsLocation || undefined,
       createdAt: new Date().toISOString(),
       authProvider: setupDraft.authProvider,
@@ -245,7 +247,7 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
                     value={phoneInput}
                     onChange={(event) => setPhoneInput(formatPhoneForInput(event.target.value))}
                     className="ml-3 flex-1 bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground"
-                    placeholder="98765 43210"
+                    placeholder="Enter the number"
                   />
                 </div>
 
@@ -276,7 +278,7 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
               <div className="flex items-start gap-3 rounded-[16px] bg-primary/5 px-4 py-3">
                 <Shield className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                 <p className="text-xs leading-relaxed text-muted-foreground">
-                  Phone OTP and Google sign-in are simulated in this build so the experience can be tested without a live backend.
+                  Your account details stay on this device until a live backend is connected.
                 </p>
               </div>
             </>
@@ -284,10 +286,6 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
 
           {step === "otp" && (
             <>
-              <div className="rounded-[18px] bg-accent/10 px-4 py-3 text-sm font-semibold text-foreground">
-                Demo OTP: <span className="text-primary">{generatedOtp}</span>
-              </div>
-
               <label className="flex flex-col gap-2">
                 <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   Verify OTP

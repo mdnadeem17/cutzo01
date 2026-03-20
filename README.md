@@ -1,3 +1,3 @@
-# Welcome to your Lovable project
+# Trimo Booking Hub
 
 TODO: Document your project here

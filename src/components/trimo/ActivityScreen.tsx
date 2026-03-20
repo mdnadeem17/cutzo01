@@ -1,20 +1,28 @@
+import { format, parseISO } from "date-fns";
 import { Calendar, Clock, Eye, MapPin, RotateCcw, Search, Star, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { BOOKINGS } from "./data";
 import { Booking, Review } from "./types";
 
 interface Props {
+  bookings: Booking[];
   onGoHome: () => void;
   reviews: Review[];
-  onSubmitReview: (
-    review: Omit<Review, "reviewId" | "createdAt">
-  ) => void;
+  onSubmitReview: (review: Omit<Review, "reviewId" | "createdAt">) => void;
 }
 
 const REVIEW_TAGS = ["Clean", "Fast Service", "Good Staff", "Affordable"];
 
+function formatBookingDate(value: string) {
+  try {
+    return format(parseISO(value), "EEE, MMM d");
+  } catch {
+    return value;
+  }
+}
+
 function StatusChip({ status }: { status: Booking["status"] }) {
   const styles: Record<Booking["status"], { bg: string; text: string; label: string }> = {
+    pending: { bg: "hsl(43,96%,95%)", text: "hsl(31,92%,45%)", label: "Pending" },
     confirmed: { bg: "hsl(189,93%,97%)", text: "hsl(189,93%,35%)", label: "Confirmed" },
     cancelled: { bg: "hsl(0,84%,97%)", text: "hsl(0,84%,50%)", label: "Cancelled" },
     completed: { bg: "hsl(142,76%,97%)", text: "hsl(142,76%,36%)", label: "Completed" },
@@ -47,9 +55,7 @@ function ReviewModal({
 
   const toggleTag = (tag: string) => {
     setSelectedTags((current) =>
-      current.includes(tag)
-        ? current.filter((item) => item !== tag)
-        : [...current, tag]
+      current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag]
     );
   };
 
@@ -110,9 +116,7 @@ function ReviewModal({
         </div>
 
         <div className="mt-6">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Tags
-          </p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tags</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {REVIEW_TAGS.map((tag) => {
               const isSelected = selectedTags.includes(tag);
@@ -175,11 +179,7 @@ function BookingCard({
   return (
     <div className="mb-4 overflow-hidden rounded-[16px] bg-card card-shadow">
       <div className="flex gap-3 p-4">
-        <img
-          src={booking.shopImage}
-          alt={booking.shopName}
-          className="h-14 w-14 shrink-0 rounded-xl object-cover"
-        />
+        <img src={booking.shopImage} alt={booking.shopName} className="h-14 w-14 shrink-0 rounded-xl object-cover" />
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex items-start justify-between gap-2">
             <p className="text-sm font-bold leading-tight text-foreground">{booking.shopName}</p>
@@ -189,7 +189,7 @@ function BookingCard({
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-1.5">
               <Calendar className="h-3 w-3 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">{booking.date}</span>
+              <span className="text-xs text-muted-foreground">{formatBookingDate(booking.date)}</span>
               <Clock className="ml-1 h-3 w-3 text-muted-foreground" />
               <span className="text-xs text-muted-foreground">{booking.time}</span>
             </div>
@@ -209,7 +209,7 @@ function BookingCard({
             Details
           </button>
 
-          {booking.status === "confirmed" && (
+          {(booking.status === "pending" || booking.status === "confirmed") && (
             <button className="flex items-center gap-1.5 rounded-full border border-destructive/30 px-3 py-1.5 text-xs font-semibold text-destructive scale-tap transition-transform">
               <RotateCcw className="h-3 w-3" />
               Reschedule
@@ -236,13 +236,13 @@ function BookingCard({
   );
 }
 
-export default function ActivityScreen({ onGoHome, reviews, onSubmitReview }: Props) {
+export default function ActivityScreen({ bookings, onGoHome, reviews, onSubmitReview }: Props) {
   const [activeTab, setActiveTab] = useState<"upcoming" | "past">("upcoming");
   const [reviewTarget, setReviewTarget] = useState<Booking | null>(null);
   const [dismissedReviewIds, setDismissedReviewIds] = useState<string[]>([]);
 
-  const upcoming = BOOKINGS.filter((booking) => booking.status === "confirmed");
-  const past = BOOKINGS.filter((booking) => booking.status !== "confirmed");
+  const upcoming = bookings.filter((booking) => booking.status === "pending" || booking.status === "confirmed");
+  const past = bookings.filter((booking) => booking.status === "completed" || booking.status === "cancelled");
   const list = activeTab === "upcoming" ? upcoming : past;
 
   const reviewedBookingIds = useMemo(
@@ -289,7 +289,7 @@ export default function ActivityScreen({ onGoHome, reviews, onSubmitReview }: Pr
       current.includes(reviewTarget.id) ? current : [...current, reviewTarget.id]
     );
     onSubmitReview({
-      userId: reviewTarget.userId,
+      userId: reviewTarget.customerName || reviewTarget.userId,
       shopId: reviewTarget.shopId,
       bookingId: reviewTarget.id,
       rating,
@@ -328,7 +328,7 @@ export default function ActivityScreen({ onGoHome, reviews, onSubmitReview }: Pr
             <div className="py-20 text-center text-muted-foreground">
               <Search className="mx-auto mb-3 h-10 w-10 opacity-30" />
               <p className="font-medium">No {activeTab} bookings</p>
-              <p className="mb-4 mt-1 text-xs">Your appointments will appear here</p>
+              <p className="mb-4 mt-1 text-xs">Your real appointments will appear here</p>
               <button
                 onClick={onGoHome}
                 className="gradient-btn h-10 rounded-[10px] px-6 text-sm font-semibold text-white"
@@ -350,11 +350,7 @@ export default function ActivityScreen({ onGoHome, reviews, onSubmitReview }: Pr
       </div>
 
       {reviewTarget && (
-        <ReviewModal
-          booking={reviewTarget}
-          onClose={handleCloseReview}
-          onSubmit={handleSubmitReview}
-        />
+        <ReviewModal booking={reviewTarget} onClose={handleCloseReview} onSubmit={handleSubmitReview} />
       )}
     </>
   );

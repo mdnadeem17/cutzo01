@@ -2,6 +2,8 @@ import { ArrowLeft, Chrome, ImageIcon, Locate, MapPin, Phone, Store } from "luci
 import { ChangeEvent, useState } from "react";
 import { formatHourLabel } from "./utils";
 import {
+  createDefaultAvailabilitySlots,
+  createDefaultServiceCatalog,
   findShopOwnerByPhone,
   formatPhoneForInput,
   normalizePhone,
@@ -67,8 +69,8 @@ const createDraft = (overrides?: Partial<SetupDraft>): SetupDraft => ({
   location: "",
   gpsLocation: "",
   address: "",
-  services: ["Haircut", "Beard Styling"],
-  startingPrice: "250",
+  services: [],
+  startingPrice: "",
   startHour: "09:00",
   endHour: "21:00",
   image: "",
@@ -108,6 +110,7 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
     }
 
     const nextOtp = String(Math.floor(100000 + Math.random() * 900000));
+    console.log("Generated OTP:", nextOtp); // Added for testing purposes
     setGeneratedOtp(nextOtp);
     setOtpValue("");
     setSetupDraft(createDraft({ phone: normalizedPhone, authProvider: "phone" }));
@@ -145,7 +148,7 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
 
     setSetupDraft(
       createDraft({
-        ownerName: "Rahul Mehta",
+        ownerName: "",
         phone: googlePhone,
         authProvider: "google",
       })
@@ -214,15 +217,25 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
       name: setupDraft.ownerName.trim() || setupDraft.shopName.trim(),
       phone: setupDraft.phone,
       shopName: setupDraft.shopName.trim(),
-      location: setupDraft.location.trim() || "Bengaluru",
+      location: setupDraft.location.trim() || "Location pending",
       address: setupDraft.address.trim(),
       services: setupDraft.services,
+      serviceCatalog: createDefaultServiceCatalog(
+        setupDraft.services,
+        Number(setupDraft.startingPrice) || 0
+      ),
       startingPrice: Number(setupDraft.startingPrice) || 0,
       workingHours: {
         start: setupDraft.startHour,
         end: setupDraft.endHour,
       },
+      availabilitySlots: createDefaultAvailabilitySlots({
+        start: setupDraft.startHour,
+        end: setupDraft.endHour,
+      }),
+      blockedDates: [],
       image: setupDraft.image,
+      images: setupDraft.image ? [setupDraft.image] : [],
       gpsLocation: setupDraft.gpsLocation,
       createdAt: new Date().toISOString(),
       authProvider: setupDraft.authProvider,
@@ -284,7 +297,7 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
                         value={phoneInput}
                         onChange={(event) => setPhoneInput(formatPhoneForInput(event.target.value))}
                         className="ml-3 flex-1 bg-transparent text-sm font-medium outline-none"
-                        placeholder="98765 43210"
+                        placeholder="Enter the number"
                       />
                     </div>
                   </label>
@@ -314,7 +327,7 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
                 </button>
 
                 <div className="mt-4 rounded-[16px] bg-muted px-4 py-3 text-xs leading-relaxed text-muted-foreground">
-                  OTP and Google sign-in are locally simulated in this build so the full owner flow can be tested without a backend.
+                  Owner account details stay on this device until a live backend is connected.
                 </div>
               </>
             ) : (
@@ -332,10 +345,6 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
                       We sent a 6-digit code to {setupDraft.phone}.
                     </p>
                   </div>
-                </div>
-
-                <div className="mt-5 rounded-[16px] bg-muted px-4 py-3 text-sm font-semibold text-foreground">
-                  Demo OTP: <span className="text-primary">{generatedOtp}</span>
                 </div>
 
                 <label className="mt-4 flex flex-col gap-2">

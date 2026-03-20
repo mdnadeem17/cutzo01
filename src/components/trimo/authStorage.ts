@@ -91,7 +91,7 @@ export const normalizePhone = (value: string) => {
 };
 
 export const formatPhoneForInput = (value: string) => {
-  const digits = value.replace(/\D/g, "").slice(-10);
+  const digits = value.replace(/\D/g, "").slice(0, 10);
 
   if (digits.length <= 5) {
     return digits;
