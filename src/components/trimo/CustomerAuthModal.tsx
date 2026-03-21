@@ -9,6 +9,11 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useAction, useMutation } from "convex/react";
+import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
+import { GoogleAuthProvider, signInWithCredential } from "firebase/auth";
+import { auth } from "../../lib/firebase";
+import { api } from "../../../convex/_generated/api";
 import {
   findCustomerByPhone,
   formatPhoneForInput,
@@ -28,6 +33,7 @@ type AuthStep = "access" | "otp" | "setup";
 
 interface SetupDraft {
   name: string;
+  email: string;
   location: string;
   gpsLocation: string;
   phone: string;
@@ -36,6 +42,7 @@ interface SetupDraft {
 
 const createDraft = (overrides?: Partial<SetupDraft>): SetupDraft => ({
   name: "",
+  email: "",
   location: "",
   gpsLocation: "",
   phone: "",
@@ -45,21 +52,17 @@ const createDraft = (overrides?: Partial<SetupDraft>): SetupDraft => ({
 
 export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Props) {
   const [step, setStep] = useState<AuthStep>("access");
-  const [phoneInput, setPhoneInput] = useState("");
-  const [generatedOtp, setGeneratedOtp] = useState("");
-  const [otpValue, setOtpValue] = useState("");
   const [setupDraft, setSetupDraft] = useState<SetupDraft>(createDraft());
   const [errorMessage, setErrorMessage] = useState("");
   const [isLocating, setIsLocating] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const resetFlow = () => {
     setStep("access");
-    setPhoneInput("");
-    setGeneratedOtp("");
-    setOtpValue("");
     setSetupDraft(createDraft());
     setErrorMessage("");
     setIsLocating(false);
+    setIsLoggingIn(false);
   };
 
   useEffect(() => {
@@ -78,70 +81,38 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
       return;
     }
 
-    if (step === "otp") {
-      setStep("access");
-      setErrorMessage("");
-      return;
-    }
-
-    setStep(setupDraft.authProvider === "google" ? "access" : "otp");
+    setStep("access");
     setErrorMessage("");
   };
 
-  const sendOtp = () => {
-    const normalizedPhone = normalizePhone(phoneInput);
-
-    if (!normalizedPhone) {
-      setErrorMessage("Enter a valid 10-digit phone number to continue.");
-      return;
-    }
-
-    const nextOtp = String(Math.floor(100000 + Math.random() * 900000));
-    console.log("Generated OTP:", nextOtp); // Added for testing purposes
-    setGeneratedOtp(nextOtp);
-    setOtpValue("");
-    setSetupDraft(createDraft({ phone: normalizedPhone, authProvider: "phone" }));
+  const continueWithGoogle = async () => {
+    setIsLoggingIn(true);
     setErrorMessage("");
-    setStep("otp");
-  };
 
-  const completePhoneLogin = () => {
-    if (otpValue !== generatedOtp) {
-      setErrorMessage("The OTP does not match. Please try again.");
-      return;
+    try {
+      // Prompt native Google overlay
+      const nativeResult = await FirebaseAuthentication.signInWithGoogle();
+      
+      // Sync auth to Web Firebase so the Javascript SDK works too
+      const credential = GoogleAuthProvider.credential(nativeResult.credential?.idToken);
+      const result = await signInWithCredential(auth, credential);
+      
+      // Pre-fill setup with Google data if it's a new user
+      setSetupDraft((current) => ({
+        ...current,
+        name: result.user.displayName || current.name,
+        email: result.user.email || current.email,
+        authProvider: "google"
+      }));
+      // We transition to setup if we need more info. If not, we could log them in. 
+      // For now, let's transition to setup step so they can provide phone/location.
+      setStep("setup");
+    } catch (error: any) {
+      console.error("Firebase Google Sign-In error:", error);
+      setErrorMessage(error?.message || "Google Sign-In failed.");
+    } finally {
+      setIsLoggingIn(false);
     }
-
-    const existingUser = findCustomerByPhone(setupDraft.phone);
-
-    if (existingUser) {
-      setCustomerSession(existingUser.userId);
-      onAuthenticated(existingUser);
-      return;
-    }
-
-    setErrorMessage("");
-    setStep("setup");
-  };
-
-  const continueWithGoogle = () => {
-    const googlePhone = "+919000010000";
-    const existingUser = findCustomerByPhone(googlePhone);
-
-    if (existingUser) {
-      setCustomerSession(existingUser.userId);
-      onAuthenticated(existingUser);
-      return;
-    }
-
-    setSetupDraft(
-      createDraft({
-        name: "",
-        phone: googlePhone,
-        authProvider: "google",
-      })
-    );
-    setErrorMessage("");
-    setStep("setup");
   };
 
   const handleUseLocation = () => {
@@ -170,26 +141,39 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
     );
   };
 
-  const completeSetup = () => {
+  const completeSetup = async () => {
     if (!setupDraft.name.trim()) {
       setErrorMessage("Name is required to continue.");
       return;
     }
 
-    const nextUser: CustomerRecord = {
-      userId: `customer-${Date.now()}`,
-      role: "customer",
-      name: setupDraft.name.trim(),
-      phone: setupDraft.phone,
-      location: setupDraft.location.trim() || "Location pending",
-      gpsLocation: setupDraft.gpsLocation || undefined,
-      createdAt: new Date().toISOString(),
-      authProvider: setupDraft.authProvider,
-    };
+    const normalizedPhone = normalizePhone(setupDraft.phone);
+    if (!normalizedPhone) {
+      setErrorMessage("A valid 10-digit phone number is required.");
+      return;
+    }
 
-    saveCustomer(nextUser);
-    setCustomerSession(nextUser.userId);
-    onAuthenticated(nextUser);
+    try {
+      // In a real app, you'd use a server mutation to save the user to Convex
+      // For now, we sync with the local session logic
+      const nextUser: CustomerRecord = {
+        userId: `customer-${Date.now()}`,
+        role: "customer",
+        name: setupDraft.name.trim(),
+        phone: normalizedPhone,
+        location: setupDraft.location.trim() || "Location pending",
+        gpsLocation: setupDraft.gpsLocation || undefined,
+        createdAt: new Date().toISOString(),
+        authProvider: "google",
+      };
+
+      saveCustomer(nextUser);
+      setCustomerSession(nextUser.userId);
+      onAuthenticated(nextUser);
+    } catch (error: any) {
+      console.error("Setup failed:", error);
+      setErrorMessage(error.message || "An error occurred during setup.");
+    }
   };
 
   return (
@@ -218,7 +202,7 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
           <p className="mt-1 text-sm leading-relaxed text-[#E0E7FF]">
             {step === "setup"
               ? "Add a few details once so your profile is ready for faster bookings."
-              : "Continue with your phone number or Google to access your profile."}
+              : "Continue with Google to access your profile."}
           </p>
         </div>
 
@@ -231,83 +215,25 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
                     className="flex h-11 w-11 items-center justify-center rounded-2xl"
                     style={{ background: "hsl(var(--primary) / 0.08)" }}
                   >
-                    <Phone className="h-5 w-5 text-primary" />
+                    <Chrome className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-foreground">Continue with Phone Number</p>
+                    <p className="text-sm font-bold text-foreground">Sign in with Google</p>
                     <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                      Enter your mobile number and verify it with OTP.
+                      Use your Google account to log in or sign up securely.
                     </p>
                   </div>
                 </div>
 
-                <div className="mt-4 flex h-14 items-center rounded-[16px] border border-border bg-background px-4">
-                  <span className="text-sm font-semibold text-foreground">+91</span>
-                  <input
-                    value={phoneInput}
-                    onChange={(event) => setPhoneInput(formatPhoneForInput(event.target.value))}
-                    className="ml-3 flex-1 bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground"
-                    placeholder="Enter the number"
-                  />
-                </div>
-
                 <button
-                  onClick={sendOtp}
-                  className="gradient-btn mt-4 h-[52px] w-full rounded-[14px] text-base font-semibold text-white"
+                  onClick={continueWithGoogle}
+                  disabled={isLoggingIn}
+                  className="gradient-btn mt-6 h-[52px] w-full rounded-[14px] text-base font-semibold text-white shadow-lg disabled:opacity-70"
                 >
-                  Continue with Phone Number
+                  {isLoggingIn ? "Signing in..." : "Continue with Google"}
                 </button>
               </div>
 
-              <div className="flex items-center gap-3">
-                <div className="h-px flex-1 bg-border" />
-                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  or
-                </span>
-                <div className="h-px flex-1 bg-border" />
-              </div>
-
-              <button
-                onClick={continueWithGoogle}
-                className="flex h-[52px] w-full items-center justify-center gap-3 rounded-[14px] border border-border bg-background text-sm font-semibold text-foreground"
-              >
-                <Chrome className="h-5 w-5 text-primary" />
-                Continue with Google
-              </button>
-
-              <div className="flex items-start gap-3 rounded-[16px] bg-primary/5 px-4 py-3">
-                <Shield className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  Your account details stay on this device until a live backend is connected.
-                </p>
-              </div>
-            </>
-          )}
-
-          {step === "otp" && (
-            <>
-              <label className="flex flex-col gap-2">
-                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  Verify OTP
-                </span>
-                <input
-                  value={otpValue}
-                  onChange={(event) => setOtpValue(event.target.value.replace(/\D/g, "").slice(0, 6))}
-                  className="h-14 rounded-[16px] border border-border bg-background px-4 text-center text-xl font-bold tracking-[0.3em] text-foreground outline-none"
-                  placeholder="000000"
-                />
-              </label>
-
-              <div className="rounded-[16px] bg-muted px-4 py-3 text-xs leading-relaxed text-muted-foreground">
-                We sent a 6-digit code to {setupDraft.phone}. Existing users will go straight into their TRIMO profile.
-              </div>
-
-              <button
-                onClick={completePhoneLogin}
-                className="gradient-btn h-[52px] w-full rounded-[14px] text-base font-semibold text-white"
-              >
-                Verify OTP
-              </button>
             </>
           )}
 
@@ -363,20 +289,29 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
 
               <label className="flex flex-col gap-2">
                 <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  Phone
+                  Mobile Number (Required)
                 </span>
-                <input
-                  value={setupDraft.phone}
-                  disabled
-                  className="h-14 rounded-[16px] border border-border bg-muted px-4 text-sm font-semibold text-foreground outline-none"
-                />
+                <div className="flex h-14 items-center rounded-[16px] border border-border bg-background px-4">
+                  <span className="text-sm font-semibold text-foreground">+91</span>
+                  <input
+                    value={setupDraft.phone}
+                    onChange={(event) =>
+                      setSetupDraft((current) => ({
+                        ...current,
+                        phone: formatPhoneForInput(event.target.value),
+                      }))
+                    }
+                    className="ml-3 flex-1 bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground"
+                    placeholder="Enter the number"
+                  />
+                </div>
               </label>
 
               <button
                 onClick={completeSetup}
-                className="gradient-btn h-[52px] w-full rounded-[14px] text-base font-semibold text-white"
+                className="gradient-btn h-[52px] w-full rounded-[14px] text-base font-semibold text-white mt-4"
               >
-                Continue
+                Complete Setup
               </button>
             </>
           )}

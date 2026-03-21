@@ -1,5 +1,10 @@
-import { ArrowLeft, Chrome, ImageIcon, Locate, MapPin, Phone, Store } from "lucide-react";
-import { ChangeEvent, useState } from "react";
+import { ArrowLeft, Chrome, ImageIcon, Locate, MapPin, Phone, Store, X } from "lucide-react";
+import { ChangeEvent, useEffect, useState } from "react";
+import { useMutation } from "convex/react";
+import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
+import { GoogleAuthProvider, signInWithCredential } from "firebase/auth";
+import { auth } from "../../lib/firebase";
+import { api } from "../../../convex/_generated/api";
 import { formatHourLabel } from "./utils";
 import {
   createDefaultAvailabilitySlots,
@@ -17,11 +22,12 @@ interface Props {
   onAuthenticated: (user: ShopOwnerRecord) => void;
 }
 
-type AuthStep = "access" | "otp" | "setup";
+type AuthStep = "access" | "setup";
 
 interface SetupDraft {
   shopName: string;
   ownerName: string;
+  email: string;
   phone: string;
   location: string;
   gpsLocation: string;
@@ -65,6 +71,7 @@ const serviceOptions = [
 const createDraft = (overrides?: Partial<SetupDraft>): SetupDraft => ({
   shopName: "",
   ownerName: "",
+  email: "",
   phone: "",
   location: "",
   gpsLocation: "",
@@ -80,12 +87,10 @@ const createDraft = (overrides?: Partial<SetupDraft>): SetupDraft => ({
 
 export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
   const [step, setStep] = useState<AuthStep>("access");
-  const [phoneInput, setPhoneInput] = useState("");
-  const [otpValue, setOtpValue] = useState("");
-  const [generatedOtp, setGeneratedOtp] = useState("");
   const [setupDraft, setSetupDraft] = useState<SetupDraft>(createDraft());
   const [errorMessage, setErrorMessage] = useState("");
   const [isLocating, setIsLocating] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const handleStepBack = () => {
     if (step === "access") {
@@ -93,68 +98,39 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
       return;
     }
 
-    if (step === "otp") {
-      setStep("access");
-      return;
-    }
-
-    setStep(setupDraft.authProvider === "google" ? "access" : "otp");
+    setStep("access");
+    setErrorMessage("");
   };
 
-  const sendOtp = () => {
-    const normalizedPhone = normalizePhone(phoneInput);
-
-    if (!normalizedPhone) {
-      setErrorMessage("Enter a valid 10-digit phone number to continue.");
-      return;
-    }
-
-    const nextOtp = String(Math.floor(100000 + Math.random() * 900000));
-    console.log("Generated OTP:", nextOtp); // Added for testing purposes
-    setGeneratedOtp(nextOtp);
-    setOtpValue("");
-    setSetupDraft(createDraft({ phone: normalizedPhone, authProvider: "phone" }));
+  const continueWithGoogle = async () => {
+    setIsLoggingIn(true);
     setErrorMessage("");
-    setStep("otp");
-  };
 
-  const completePhoneLogin = () => {
-    if (otpValue !== generatedOtp) {
-      setErrorMessage("The OTP does not match. Please try again.");
-      return;
+    try {
+      // Use native plugin to solve webview popup block
+      const nativeResult = await FirebaseAuthentication.signInWithGoogle();
+      
+      // Apply credential to Web App so Javascript SDK authenticates
+      const credential = GoogleAuthProvider.credential(nativeResult.credential?.idToken);
+      const result = await signInWithCredential(auth, credential);
+      
+      // In a real app we'd query the backend to see if this shop owner exists.
+      // Since we don't have the backend lookup implemented here, we will push them to setup.
+      // Assuming new user flow for Firebase Google sign-in:
+      setSetupDraft(
+        createDraft({
+          email: result.user.email || "",
+          ownerName: result.user.displayName || "",
+          authProvider: "google",
+        })
+      );
+      setStep("setup");
+    } catch (error: any) {
+      console.error("Firebase Google Login failed:", error);
+      setErrorMessage(error.message || "Failed to sign in with Google.");
+    } finally {
+      setIsLoggingIn(false);
     }
-
-    const existingUser = findShopOwnerByPhone(setupDraft.phone);
-
-    if (existingUser) {
-      setShopOwnerSession(existingUser.userId);
-      onAuthenticated(existingUser);
-      return;
-    }
-
-    setErrorMessage("");
-    setStep("setup");
-  };
-
-  const continueWithGoogle = () => {
-    const googlePhone = "+919000010001";
-    const existingUser = findShopOwnerByPhone(googlePhone);
-
-    if (existingUser) {
-      setShopOwnerSession(existingUser.userId);
-      onAuthenticated(existingUser);
-      return;
-    }
-
-    setSetupDraft(
-      createDraft({
-        ownerName: "",
-        phone: googlePhone,
-        authProvider: "google",
-      })
-    );
-    setErrorMessage("");
-    setStep("setup");
   };
 
   const toggleService = (service: string) => {
@@ -205,45 +181,55 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
     reader.readAsDataURL(file);
   };
 
-  const completeSetup = () => {
+  const completeSetup = async () => {
     if (!setupDraft.shopName.trim()) {
       setErrorMessage("Shop name is required to complete setup.");
       return;
     }
 
-    const userRecord: ShopOwnerRecord = {
-      userId: `owner-${Date.now()}`,
-      role: "shop_owner",
-      name: setupDraft.ownerName.trim() || setupDraft.shopName.trim(),
-      phone: setupDraft.phone,
-      shopName: setupDraft.shopName.trim(),
-      location: setupDraft.location.trim() || "Location pending",
-      address: setupDraft.address.trim(),
-      services: setupDraft.services,
-      serviceCatalog: createDefaultServiceCatalog(
-        setupDraft.services,
-        Number(setupDraft.startingPrice) || 0
-      ),
-      startingPrice: Number(setupDraft.startingPrice) || 0,
-      workingHours: {
-        start: setupDraft.startHour,
-        end: setupDraft.endHour,
-      },
-      availabilitySlots: createDefaultAvailabilitySlots({
-        start: setupDraft.startHour,
-        end: setupDraft.endHour,
-      }),
-      blockedDates: [],
-      image: setupDraft.image,
-      images: setupDraft.image ? [setupDraft.image] : [],
-      gpsLocation: setupDraft.gpsLocation,
-      createdAt: new Date().toISOString(),
-      authProvider: setupDraft.authProvider,
-    };
+    const normalizedPhone = normalizePhone(setupDraft.phone);
+    if (!normalizedPhone) {
+      setErrorMessage("A valid 10-digit phone number is required.");
+      return;
+    }
 
-    saveShopOwner(userRecord);
-    setShopOwnerSession(userRecord.userId);
-    onAuthenticated(userRecord);
+    try {
+      const userRecord: ShopOwnerRecord = {
+        userId: `owner-${Date.now()}`,
+        role: "shop_owner",
+        name: setupDraft.ownerName.trim() || setupDraft.shopName.trim(),
+        phone: normalizedPhone,
+        shopName: setupDraft.shopName.trim(),
+        location: setupDraft.location.trim() || "Location pending",
+        address: setupDraft.address.trim(),
+        services: setupDraft.services,
+        serviceCatalog: createDefaultServiceCatalog(
+          setupDraft.services,
+          Number(setupDraft.startingPrice) || 0
+        ),
+        startingPrice: Number(setupDraft.startingPrice) || 0,
+        workingHours: {
+          start: setupDraft.startHour,
+          end: setupDraft.endHour,
+        },
+        availabilitySlots: createDefaultAvailabilitySlots({
+          start: setupDraft.startHour,
+          end: setupDraft.endHour,
+        }),
+        blockedDates: [],
+        image: setupDraft.image,
+        images: setupDraft.image ? [setupDraft.image] : [],
+        gpsLocation: setupDraft.gpsLocation,
+        createdAt: new Date().toISOString(),
+        authProvider: "google",
+      };
+
+      saveShopOwner(userRecord);
+      setShopOwnerSession(userRecord.userId);
+      onAuthenticated(userRecord);
+    } catch (error: any) {
+      setErrorMessage(error.message || "An error occurred during setup.");
+    }
   };
 
   return (
@@ -262,111 +248,43 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
         <p className="mt-1 text-sm text-light-text">
           {step === "setup"
             ? "Complete a quick setup so customers can discover and book your barber shop."
-            : "Use your phone or Google to access the barber shop dashboard."}
+            : "Use your Google account to access the barber shop dashboard."}
         </p>
       </div>
 
       <div className="-mt-5 flex flex-1 flex-col gap-4 px-4 pb-8">
-        {(step === "access" || step === "otp") && (
+        {step === "access" && (
           <div className="rounded-[22px] bg-card p-5 card-shadow">
-            {step === "access" ? (
-              <>
-                <div className="flex items-center gap-3">
-                  <div
-                    className="flex h-12 w-12 items-center justify-center rounded-2xl"
-                    style={{ background: "hsl(var(--primary) / 0.08)" }}
-                  >
-                    <Phone className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-foreground">Continue with Phone Number</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Verify with OTP, then finish shop setup only if you are new.
-                    </p>
-                  </div>
-                </div>
+            <div className="flex items-center gap-3">
+              <div
+                className="flex h-12 w-12 items-center justify-center rounded-2xl"
+                style={{ background: "hsl(var(--primary) / 0.08)" }}
+              >
+                <Chrome className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-foreground">Sign in with Google</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Secure access to your Trimo Partner dashboard.
+                </p>
+              </div>
+            </div>
 
-                <div className="mt-5 flex flex-col gap-3">
-                  <label className="flex flex-col gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Phone number
-                    </span>
-                    <div className="flex h-14 items-center rounded-[16px] border border-border bg-background px-4">
-                      <span className="text-sm font-semibold text-foreground">+91</span>
-                      <input
-                        value={phoneInput}
-                        onChange={(event) => setPhoneInput(formatPhoneForInput(event.target.value))}
-                        className="ml-3 flex-1 bg-transparent text-sm font-medium outline-none"
-                        placeholder="Enter the number"
-                      />
-                    </div>
-                  </label>
+            <button
+              onClick={continueWithGoogle}
+              disabled={isLoggingIn}
+              className="gradient-btn mt-6 h-[52px] w-full rounded-[14px] text-base font-semibold text-white shadow-lg disabled:opacity-70"
+            >
+              {isLoggingIn ? "Signing in..." : "Continue with Google"}
+            </button>
 
-                  <button
-                    onClick={sendOtp}
-                    className="gradient-btn h-[52px] rounded-[14px] text-base font-semibold text-white"
-                  >
-                    Continue with Phone Number
-                  </button>
-                </div>
-
-                <div className="my-5 flex items-center gap-3">
-                  <div className="h-px flex-1 bg-border" />
-                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    or
-                  </span>
-                  <div className="h-px flex-1 bg-border" />
-                </div>
-
-                <button
-                  onClick={continueWithGoogle}
-                  className="flex h-[52px] w-full items-center justify-center gap-3 rounded-[14px] border border-border bg-background text-sm font-semibold text-foreground"
-                >
-                  <Chrome className="h-5 w-5 text-primary" />
-                  Continue with Google
-                </button>
-
-                <div className="mt-4 rounded-[16px] bg-muted px-4 py-3 text-xs leading-relaxed text-muted-foreground">
-                  Owner account details stay on this device until a live backend is connected.
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-3">
-                  <div
-                    className="flex h-12 w-12 items-center justify-center rounded-2xl"
-                    style={{ background: "hsl(var(--accent) / 0.12)" }}
-                  >
-                    <Store className="h-5 w-5 text-accent" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-foreground">Verify OTP</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      We sent a 6-digit code to {setupDraft.phone}.
-                    </p>
-                  </div>
-                </div>
-
-                <label className="mt-4 flex flex-col gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Enter OTP
-                  </span>
-                  <input
-                    value={otpValue}
-                    onChange={(event) => setOtpValue(event.target.value.replace(/\D/g, "").slice(0, 6))}
-                    className="h-14 rounded-[16px] border border-border bg-background px-4 text-center text-xl font-bold tracking-[0.35em] outline-none"
-                    placeholder="000000"
-                  />
-                </label>
-
-                <button
-                  onClick={completePhoneLogin}
-                  className="gradient-btn mt-5 h-[52px] w-full rounded-[14px] text-base font-semibold text-white"
-                >
-                  Verify OTP
-                </button>
-              </>
-            )}
+            <div className="mt-6 flex items-center gap-3">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                Partner Secure Login
+              </span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
           </div>
         )}
 
@@ -403,13 +321,22 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
 
               <label className="flex flex-col gap-2">
                 <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Phone Number
+                  Phone Number (Required)
                 </span>
-                <input
-                  value={setupDraft.phone}
-                  disabled
-                  className="h-14 rounded-[16px] border border-border bg-muted px-4 text-sm font-semibold text-foreground outline-none"
-                />
+                <div className="flex h-14 items-center rounded-[16px] border border-border bg-background px-4">
+                  <span className="text-sm font-semibold text-foreground">+91</span>
+                  <input
+                    value={setupDraft.phone}
+                    onChange={(event) =>
+                      setSetupDraft((current) => ({
+                        ...current,
+                        phone: formatPhoneForInput(event.target.value),
+                      }))
+                    }
+                    className="ml-3 flex-1 bg-transparent text-sm font-medium outline-none"
+                    placeholder="Enter the number"
+                  />
+                </div>
               </label>
 
               <div className="grid grid-cols-[1fr_auto] gap-3">
@@ -557,7 +484,7 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
 
               <button
                 onClick={completeSetup}
-                className="gradient-btn h-[52px] w-full rounded-[14px] text-base font-semibold text-white"
+                className="gradient-btn h-[52px] w-full rounded-[14px] text-base font-semibold text-white mt-4"
               >
                 Complete Setup
               </button>
@@ -577,12 +504,12 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
               style={{ background: "hsl(var(--accent) / 0.12)" }}
             >
-              <MapPin className="h-5 w-5 text-accent" />
+              <Store className="h-5 w-5 text-accent" />
             </div>
             <div>
-              <p className="text-sm font-bold text-foreground">Stored locally for now</p>
+              <p className="text-sm font-bold text-foreground">Partner Verification</p>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                Owner accounts are saved in a local TRIMO database shape with `users[userId]` records, then routed into the vendor dashboard after verification.
+                All shops go through a quick manual verification before going live on the Trimo marketplace.
               </p>
             </div>
           </div>

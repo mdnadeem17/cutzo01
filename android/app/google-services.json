@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "648252665759",
+    "project_id": "trimo-e4f93",
+    "storage_bucket": "trimo-e4f93.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:648252665759:android:dd32048af13e9ac25497aa",
+        "android_client_info": {
+          "package_name": "com.trimo.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "648252665759-4upr7vm38e4nsrkmje2jc2pis5aum9d3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.trimo.app",
+            "certificate_hash": "abe1eb713f49519bd313c1a4270651bc5f56fb76"
+          }
+        },
+        {
+          "client_id": "648252665759-riu740mijhv712n8vvrif1k7t7aao5i0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAUkT3h3owQ0eUTdfNR13-GBIb9pCbKGBg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "648252665759-riu740mijhv712n8vvrif1k7t7aao5i0.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Trimo</string>
+    <string name="title_activity_main">Trimo</string>
+    <string name="package_name">com.trimo.app</string>
+    <string name="custom_url_scheme">com.trimo.app</string>
+    <string name="default_web_client_id">648252665759-riu740mijhv712n8vvrif1k7t7aao5i0.apps.googleusercontent.com</string>
+    <string name="server_client_id">1033106865920-dcpuireh6hsaqsbestvnsku24nqreftt.apps.googleusercontent.com</string>
+</resources>

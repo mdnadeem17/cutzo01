@@ -169,8 +169,8 @@ export default function Index() {
 
   return (
     <div
-      className="relative mx-auto min-h-screen overflow-hidden"
-      style={{ maxWidth: "430px", background: "hsl(var(--background))" }}
+      className="app-container relative overflow-hidden"
+      style={{ background: "hsl(var(--background))" }}
     >
       {appMode === "vendor" ? (
         <ShopOwnerPortal onBackToCustomer={handleExitVendor} />

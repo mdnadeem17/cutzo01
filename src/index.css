@@ -88,6 +88,19 @@
     @apply bg-background text-foreground;
     font-family: 'Inter', 'Poppins', sans-serif;
     -webkit-font-smoothing: antialiased;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+  html, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+  .app-container {
+    min-height: 100vh;
   }
 }
 
