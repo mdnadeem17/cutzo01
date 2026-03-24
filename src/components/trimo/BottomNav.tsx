@@ -16,51 +16,52 @@ const TABS: { id: Tab; label: string; Icon: React.ComponentType<React.SVGProps<S
 
 export default function BottomNav({ active, onTab, bookingCount = 0 }: Props) {
   return (
-    <nav
-      className="fixed bottom-0 left-0 right-0 bg-card border-t border-border flex items-center justify-around px-2 h-16 z-40"
+    <nav className="fixed bottom-[12px] left-[12px] right-[12px] h-[65px] z-[60] rounded-[22px] bg-white pointer-events-auto transition-shadow"
       style={{
-        maxWidth: "430px",
-        margin: "0 auto",
-        boxShadow: "0 -5px 20px rgba(0,0,0,0.08)",
+        boxShadow: "0 8px 30px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06)",
       }}
     >
-      {TABS.map(({ id, label, Icon }) => {
-        const isActive = active === id;
-        return (
-          <button
-            key={id}
-            onClick={() => onTab(id)}
-            className="flex-1 flex flex-col items-center justify-center gap-1 h-full relative scale-tap transition-transform"
-          >
-            <div className="relative">
-              <Icon
-                className="w-5 h-5"
-                style={{ color: isActive ? "hsl(var(--accent))" : "hsl(var(--muted-foreground))" }}
-              />
-              {id === "activity" && bookingCount > 0 && (
-                <span
-                  className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] rounded-full text-[9px] font-bold text-white flex items-center justify-center px-0.5"
-                  style={{ background: "hsl(var(--destructive))" }}
-                >
-                  {bookingCount}
-                </span>
-              )}
-            </div>
-            <span
-              className="text-[11px] font-semibold"
-              style={{ color: isActive ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))" }}
+      <div className="flex h-full w-full items-center justify-around px-2">
+        {TABS.map(({ id, label, Icon }) => {
+          const isActive = active === id;
+          return (
+            <button
+              key={id}
+              onClick={() => onTab(id)}
+              className="group flex-1 flex flex-col items-center justify-center h-full relative scale-tap duration-200 ease-in-out touch-manipulation"
             >
-              {label}
-            </span>
-            {isActive && (
-              <div
-                className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full"
-                style={{ background: "hsl(var(--accent))" }}
-              />
-            )}
-          </button>
-        );
-      })}
+              <div 
+                className={`relative flex items-center justify-center rounded-full transition-all duration-300 ease-in-out ${
+                  isActive 
+                    ? "w-12 h-12 -translate-y-3 customer-gradient shadow-[0_8px_16px_rgba(143,0,255,0.35)]" 
+                    : "w-10 h-10 mt-2"
+                }`}
+              >
+                <Icon
+                  className={`transition-colors duration-300 ${isActive ? "w-[22px] h-[22px] text-white" : "w-5 h-5 text-muted-foreground"}`}
+                  strokeWidth={isActive ? 2.5 : 2}
+                />
+                {id === "activity" && bookingCount > 0 && (
+                  <span
+                    className="absolute -top-1 -right-1 flex min-w-[16px] h-[16px] items-center justify-center rounded-full border-2 border-white text-[9px] font-bold text-white shadow-sm"
+                    style={{ background: "hsl(var(--destructive))" }}
+                  >
+                    {bookingCount}
+                  </span>
+                )}
+              </div>
+              
+              <span 
+                className={`absolute bottom-1.5 text-[10px] font-bold tracking-wide transition-all duration-300 ease-in-out ${
+                  isActive ? "opacity-100 text-primary translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
+                }`}
+              >
+                {label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </nav>
   );
 }

@@ -69,7 +69,8 @@ export const loadCustomerBookings = (userId: string) =>
 
 export const loadVendorBookings = (ownerId: string): VendorBooking[] =>
   loadAllBookings()
-    .filter((booking) => booking.shopId === ownerId)
+    // Match bookings either by the explicit ownerId field (new) or by shopId matching ownerId (legacy)
+    .filter((booking) => booking.ownerId === ownerId || booking.shopId === ownerId)
     .map((booking) => ({
       id: booking.id,
       customerName: booking.customerName || "Customer",
@@ -100,6 +101,25 @@ export const updateStoredBookingStatus = (
   database.bookings[bookingId] = {
     ...database.bookings[bookingId],
     status,
+  };
+  writeBookingDatabase(database);
+  return loadAllBookings();
+};
+
+export const cancelBooking = (bookingId: string) =>
+  updateStoredBookingStatus(bookingId, "cancelled");
+
+export const rescheduleBooking = (
+  bookingId: string,
+  newDate: string,
+  newTime: string
+) => {
+  const database = readBookingDatabase();
+  if (!database.bookings[bookingId]) return loadAllBookings();
+  database.bookings[bookingId] = {
+    ...database.bookings[bookingId],
+    date: newDate,
+    time: newTime,
   };
   writeBookingDatabase(database);
   return loadAllBookings();

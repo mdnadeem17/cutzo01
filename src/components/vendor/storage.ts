@@ -2,6 +2,7 @@ import { formatHourLabel } from "./utils";
 import {
   AvailabilitySlot,
   BlockedDate,
+  BreakTime,
   VendorService,
   WorkingHours,
 } from "./types";
@@ -18,6 +19,9 @@ export interface ShopOwnerRecord {
   serviceCatalog: VendorService[];
   startingPrice: number;
   workingHours: WorkingHours;
+  slotDuration: number;
+  maxBookingsPerSlot: number;
+  breakTime?: BreakTime | null;
   availabilitySlots: AvailabilitySlot[];
   blockedDates: BlockedDate[];
   image?: string;
@@ -33,6 +37,8 @@ interface TrimoDatabase {
 
 const DATABASE_KEY = "trimo_shop_owner_db";
 const SESSION_KEY = "trimo_shop_owner_session";
+const SESSION_EXPIRY_KEY = "trimo_shop_owner_session_expiry";
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
 
 const emptyDatabase = (): TrimoDatabase => ({ users: {} });
 
@@ -43,28 +49,59 @@ const defaultWorkingHours: WorkingHours = {
   end: "21:00",
 };
 
-const hourRange = (start: number, end: number) => {
-  const slots: number[] = [];
+export const createDefaultAvailabilitySlots = (
+  workingHours: WorkingHours,
+  slotDuration: number = 30,
+  breakTime?: BreakTime | null
+): AvailabilitySlot[] => {
+  const [startHourStr, startMinStr] = workingHours.start.split(":");
+  const [endHourStr, endMinStr] = workingHours.end.split(":");
+  const startHour = Number.parseInt(startHourStr ?? "9", 10);
+  const startMin = Number.parseInt(startMinStr ?? "0", 10);
+  const endHour = Number.parseInt(endHourStr ?? "21", 10);
+  const endMin = Number.parseInt(endMinStr ?? "0", 10);
 
-  for (let hour = start; hour < end; hour += 1) {
-    slots.push(hour);
+  const safeStart = Number.isFinite(startHour) ? startHour : 9;
+  const safeEnd = Number.isFinite(endHour) ? endHour : 21;
+
+  let currentMinutes = safeStart * 60 + (Number.isFinite(startMin) ? startMin : 0);
+  const endMinutes = safeEnd * 60 + (Number.isFinite(endMin) ? endMin : 0);
+
+  let breakStartMinutes = -1;
+  let breakEndMinutes = -1;
+  if (breakTime?.start && breakTime?.end) {
+    const [bStartH, bStartM] = breakTime.start.split(":");
+    const [bEndH, bEndM] = breakTime.end.split(":");
+    breakStartMinutes = Number.parseInt(bStartH, 10) * 60 + Number.parseInt(bStartM, 10);
+    breakEndMinutes = Number.parseInt(bEndH, 10) * 60 + Number.parseInt(bEndM, 10);
+  }
+
+  const duration = slotDuration > 0 ? slotDuration : 30;
+  const slots: AvailabilitySlot[] = [];
+  let index = 1;
+
+  while (currentMinutes + duration <= endMinutes) {
+    const slotStartMinutes = currentMinutes;
+    const slotEndMinutes = currentMinutes + duration;
+
+    const isDuringBreak = breakStartMinutes !== -1 && breakEndMinutes !== -1 && 
+      !(slotEndMinutes <= breakStartMinutes || slotStartMinutes >= breakEndMinutes);
+
+    if (!isDuringBreak) {
+      const h = Math.floor(slotStartMinutes / 60);
+      const m = slotStartMinutes % 60;
+      const timeStr = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+      slots.push({
+        id: `slot-${index}`,
+        time: formatHourLabel(timeStr),
+        enabled: true,
+      });
+      index++;
+    }
+    currentMinutes += duration;
   }
 
   return slots;
-};
-
-export const createDefaultAvailabilitySlots = (workingHours: WorkingHours): AvailabilitySlot[] => {
-  const startHour = Number.parseInt(workingHours.start.split(":")[0] ?? "9", 10);
-  const endHour = Number.parseInt(workingHours.end.split(":")[0] ?? "21", 10);
-  const safeStart = Number.isFinite(startHour) ? startHour : 9;
-  const safeEnd = Number.isFinite(endHour) ? endHour : 21;
-  const hours = safeEnd > safeStart ? hourRange(safeStart, safeEnd) : hourRange(9, 21);
-
-  return hours.map((hour, index) => ({
-    id: `slot-${index + 1}`,
-    time: formatHourLabel(`${String(hour).padStart(2, "0")}:00`),
-    enabled: true,
-  }));
 };
 
 export const createDefaultServiceCatalog = (
@@ -96,7 +133,7 @@ const normalizeShopOwnerRecord = (user: Partial<ShopOwnerRecord>): ShopOwnerReco
   const availabilitySlots =
     user.availabilitySlots && user.availabilitySlots.length > 0
       ? user.availabilitySlots
-      : createDefaultAvailabilitySlots(workingHours);
+      : createDefaultAvailabilitySlots(workingHours, user.slotDuration, user.breakTime);
 
   return {
     userId: user.userId ?? `owner-${Date.now()}`,
@@ -113,6 +150,9 @@ const normalizeShopOwnerRecord = (user: Partial<ShopOwnerRecord>): ShopOwnerReco
         ? Math.min(...serviceCatalog.map((service) => service.price))
         : user.startingPrice ?? 0,
     workingHours,
+    slotDuration: user.slotDuration ?? 30,
+    maxBookingsPerSlot: user.maxBookingsPerSlot ?? 1,
+    breakTime: user.breakTime ?? null,
     availabilitySlots,
     blockedDates: user.blockedDates ?? [],
     image: images[0] ?? user.image,
@@ -180,6 +220,10 @@ export const setShopOwnerSession = (userId: string) => {
   }
 
   window.localStorage.setItem(SESSION_KEY, userId);
+  window.localStorage.setItem(
+    SESSION_EXPIRY_KEY,
+    String(Date.now() + SESSION_TTL_MS)
+  );
 };
 
 export const clearShopOwnerSession = () => {
@@ -188,6 +232,7 @@ export const clearShopOwnerSession = () => {
   }
 
   window.localStorage.removeItem(SESSION_KEY);
+  window.localStorage.removeItem(SESSION_EXPIRY_KEY);
 };
 
 export const getActiveShopOwner = () => {
@@ -196,7 +241,18 @@ export const getActiveShopOwner = () => {
   }
 
   const userId = window.localStorage.getItem(SESSION_KEY);
-  return userId ? getShopOwnerById(userId) : null;
+  if (!userId) return null;
+
+  // Session expiry check
+  const expiryStr = window.localStorage.getItem(SESSION_EXPIRY_KEY);
+  const expiry = expiryStr ? Number(expiryStr) : 0;
+  if (Date.now() > expiry) {
+    // Session expired — clear it silently
+    clearShopOwnerSession();
+    return null;
+  }
+
+  return getShopOwnerById(userId);
 };
 
 export const normalizePhone = (value: string) => {

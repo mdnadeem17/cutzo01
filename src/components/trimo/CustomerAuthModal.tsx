@@ -1,6 +1,5 @@
 import {
   ArrowLeft,
-  Chrome,
   LocateFixed,
   MapPin,
   Phone,
@@ -8,14 +7,27 @@ import {
   UserRound,
   X,
 } from "lucide-react";
+
+function GoogleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+    </svg>
+  );
+}
+
 import { useEffect, useState } from "react";
-import { useAction, useMutation } from "convex/react";
-import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
-import { GoogleAuthProvider, signInWithCredential } from "firebase/auth";
+import { useMutation, useQuery } from "convex/react";
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
+import { Capacitor } from '@capacitor/core';
 import { auth } from "../../lib/firebase";
+import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { useLoading } from "./LoadingContext";
 import { api } from "../../../convex/_generated/api";
 import {
-  findCustomerByPhone,
   formatPhoneForInput,
   normalizePhone,
   saveCustomer,
@@ -23,13 +35,14 @@ import {
 } from "./authStorage";
 import { CustomerRecord } from "./types";
 
+
 interface Props {
   open: boolean;
   onClose: () => void;
   onAuthenticated: (user: CustomerRecord) => void;
 }
 
-type AuthStep = "access" | "otp" | "setup";
+type AuthStep = "access" | "setup";
 
 interface SetupDraft {
   name: string;
@@ -56,6 +69,77 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
   const [errorMessage, setErrorMessage] = useState("");
   const [isLocating, setIsLocating] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [firebaseUid, setFirebaseUid] = useState<string | null>(null);
+  const { showLoading, hideLoading } = useLoading();
+
+  const createUser = useMutation(api.users.createUser);
+  const upsertCustomer = useMutation(api.customers.upsertCustomer);
+
+  // Check returning user in Convex after sign-in
+  const existingUser = useQuery(
+    api.users.getUserById,
+    firebaseUid ? { uid: firebaseUid } : "skip"
+  );
+
+  const existingCustomer = useQuery(
+    api.customers.getCustomerByFirebaseUid,
+    firebaseUid ? { firebaseUid: firebaseUid } : "skip"
+  );
+
+  // Syncing with Convex logic removed Clerk dependency
+
+  useEffect(() => {
+    if (!firebaseUid) return;
+    if (existingUser === undefined) return; // still loading
+    if (existingCustomer === undefined) return; // still loading
+
+    const email = setupDraft.email || "";
+    const name = setupDraft.name || "";
+
+    if (existingUser) {
+      const mergedPhone = existingUser.phone || existingCustomer?.phone || "";
+      const mergedLocation = existingUser.location || existingCustomer?.location || "Location pending";
+
+      const userRecord: CustomerRecord = {
+        userId: existingUser.uid,
+        role: "customer",
+        name: existingUser.name || existingCustomer?.name || name,
+        phone: mergedPhone,
+        location: mergedLocation,
+        createdAt: new Date().toISOString(),
+        authProvider: "google",
+      };
+      saveCustomer(userRecord);
+      setCustomerSession(userRecord.userId);
+      hideLoading();
+      onAuthenticated(userRecord);
+    } else if (existingCustomer) {
+      const userRecord: CustomerRecord = {
+        userId: existingCustomer.firebaseUid,
+        role: "customer",
+        name: existingCustomer.name || name,
+        phone: existingCustomer.phone || "",
+        location: existingCustomer.location || "Location pending",
+        createdAt: new Date().toISOString(),
+        authProvider: "google",
+      };
+      saveCustomer(userRecord);
+      setCustomerSession(userRecord.userId);
+      hideLoading();
+      onAuthenticated(userRecord);
+    } else {
+      // New user — show setup form
+      setSetupDraft((current) => ({
+        ...current,
+        name: name,
+        email,
+        authProvider: "google",
+      }));
+      setStep("setup");
+      hideLoading();
+    }
+    setIsLoggingIn(false);
+  }, [firebaseUid, existingUser, existingCustomer]);
 
   const resetFlow = () => {
     setStep("access");
@@ -63,6 +147,7 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
     setErrorMessage("");
     setIsLocating(false);
     setIsLoggingIn(false);
+    setFirebaseUid(null);
   };
 
   useEffect(() => {
@@ -80,7 +165,6 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
       onClose();
       return;
     }
-
     setStep("access");
     setErrorMessage("");
   };
@@ -88,30 +172,57 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
   const continueWithGoogle = async () => {
     setIsLoggingIn(true);
     setErrorMessage("");
+    showLoading("Connecting to Google...");
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const result = await FirebaseAuthentication.signInWithGoogle();
+        if (result.user) {
+          const user = result.user;
+          console.log("Firebase Native Google Sign-In success:", user);
+          
+          setFirebaseUid(user.uid);
+          setSetupDraft((current) => ({
+            ...current,
+            name: user.displayName || "",
+            email: user.email || "",
+            authProvider: "google",
+          }));
+          
+          // The useEffect will handle syncing with Convex once firebaseUid is set
+        } else {
+          throw new Error("No user returned from native sign-in.");
+        }
+      } catch (error: any) {
+        console.error("Firebase Native Google Sign-In error:", error);
+        setErrorMessage(error?.message || "Native Google Sign-In failed.");
+        setIsLoggingIn(false);
+        hideLoading();
+      }
+      return;
+    }
 
     try {
-      // Prompt native Google overlay
-      const nativeResult = await FirebaseAuthentication.signInWithGoogle();
-      
-      // Sync auth to Web Firebase so the Javascript SDK works too
-      const credential = GoogleAuthProvider.credential(nativeResult.credential?.idToken);
-      const result = await signInWithCredential(auth, credential);
-      
-      // Pre-fill setup with Google data if it's a new user
-      setSetupDraft((current) => ({
-        ...current,
-        name: result.user.displayName || current.name,
-        email: result.user.email || current.email,
-        authProvider: "google"
-      }));
-      // We transition to setup if we need more info. If not, we could log them in. 
-      // For now, let's transition to setup step so they can provide phone/location.
-      setStep("setup");
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      if (result.user) {
+        const user = result.user;
+        setFirebaseUid(user.uid);
+        setSetupDraft((current) => ({
+          ...current,
+          name: user.displayName || "",
+          email: user.email || "",
+          authProvider: "google",
+        }));
+      }
     } catch (error: any) {
-      console.error("Firebase Google Sign-In error:", error);
+      console.error("Firebase Web Google Sign-In error:", error);
       setErrorMessage(error?.message || "Google Sign-In failed.");
-    } finally {
       setIsLoggingIn(false);
+      hideLoading();
+    } finally {
+       setIsLoggingIn(false);
+       hideLoading();
     }
   };
 
@@ -153,15 +264,38 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
       return;
     }
 
+    showLoading("Saving your profile...");
+
     try {
-      // In a real app, you'd use a server mutation to save the user to Convex
-      // For now, we sync with the local session logic
-      const nextUser: CustomerRecord = {
-        userId: `customer-${Date.now()}`,
-        role: "customer",
-        name: setupDraft.name.trim(),
+      const uid = firebaseUid || "";
+      const name = setupDraft.name.trim();
+      const location = setupDraft.location.trim() || "Location pending";
+
+      // Write to primary 'users' table
+      await createUser({
+        uid,
+        name,
+        location,
+        email: setupDraft.email,
         phone: normalizedPhone,
-        location: setupDraft.location.trim() || "Location pending",
+      });
+
+      // Mirror to 'customers' table to keep both in sync
+      await upsertCustomer({
+        firebaseUid: uid,
+        email: setupDraft.email,
+        name,
+        phone: normalizedPhone,
+        location,
+        gpsLocation: setupDraft.gpsLocation || undefined,
+      });
+
+      const nextUser: CustomerRecord = {
+        userId: uid,
+        role: "customer",
+        name,
+        phone: normalizedPhone,
+        location,
         gpsLocation: setupDraft.gpsLocation || undefined,
         createdAt: new Date().toISOString(),
         authProvider: "google",
@@ -169,17 +303,19 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
 
       saveCustomer(nextUser);
       setCustomerSession(nextUser.userId);
+      hideLoading();
       onAuthenticated(nextUser);
     } catch (error: any) {
       console.error("Setup failed:", error);
       setErrorMessage(error.message || "An error occurred during setup.");
+      hideLoading();
     }
   };
 
   return (
     <div className="fixed inset-0 z-[80] flex items-end justify-center bg-slate-950/55 px-4 py-4 backdrop-blur-sm">
-      <div className="w-full max-w-[430px] overflow-hidden rounded-[28px] bg-card shadow-[0_24px_70px_rgba(15,23,42,0.35)]">
-        <div className="brand-gradient px-5 pb-6 pt-5">
+      <div className="slide-up w-full max-w-[430px] overflow-hidden rounded-[28px] bg-card shadow-[0_24px_70px_rgba(15,23,42,0.35)]">
+        <div className="customer-header px-5 pb-6 pt-5">
           <div className="flex items-center justify-between">
             <button
               onClick={handleStepBack}
@@ -195,8 +331,8 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
             </button>
           </div>
 
-          <p className="mt-5 text-sm font-medium text-white/75">TRIMO Account</p>
-          <h2 className="mt-1 text-2xl font-bold text-white">
+          <p className="mt-5 text-sm font-medium text-white/75 animate-fade-in-delayed">TRIMO Account</p>
+          <h2 className="mt-1 text-2xl font-bold text-white animate-fade-slide-up">
             {step === "setup" ? "Complete your profile" : "Login or Sign Up"}
           </h2>
           <p className="mt-1 text-sm leading-relaxed text-[#E0E7FF]">
@@ -215,7 +351,7 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
                     className="flex h-11 w-11 items-center justify-center rounded-2xl"
                     style={{ background: "hsl(var(--primary) / 0.08)" }}
                   >
-                    <Chrome className="h-5 w-5 text-primary" />
+                    <GoogleIcon className="h-5 w-5" />
                   </div>
                   <div>
                     <p className="text-sm font-bold text-foreground">Sign in with Google</p>
@@ -228,7 +364,7 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
                 <button
                   onClick={continueWithGoogle}
                   disabled={isLoggingIn}
-                  className="gradient-btn mt-6 h-[52px] w-full rounded-[14px] text-base font-semibold text-white shadow-lg disabled:opacity-70"
+                  className="customer-gradient mt-6 h-[56px] w-full rounded-2xl text-base font-semibold text-white shadow-[0_0_15px_rgba(143,0,255,0.3)] disabled:opacity-70"
                 >
                   {isLoggingIn ? "Signing in..." : "Continue with Google"}
                 </button>
@@ -309,7 +445,7 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
 
               <button
                 onClick={completeSetup}
-                className="gradient-btn h-[52px] w-full rounded-[14px] text-base font-semibold text-white mt-4"
+                className="customer-gradient h-[56px] w-full rounded-2xl text-base font-semibold text-white mt-4 shadow-[0_0_15px_rgba(143,0,255,0.3)]"
               >
                 Complete Setup
               </button>

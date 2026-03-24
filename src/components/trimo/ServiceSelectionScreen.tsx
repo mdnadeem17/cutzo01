@@ -1,5 +1,7 @@
 import {
   ArrowLeft,
+  Check,
+  Clock,
   Droplets,
   Flame,
   Hand,
@@ -45,46 +47,72 @@ function ServiceCard({
   return (
     <div
       onClick={onToggle}
-      className="cursor-pointer rounded-[16px] bg-card p-4 card-shadow scale-tap transition-all"
+      className="cursor-pointer rounded-[18px] scale-tap transition-all active:scale-[0.98]"
       style={{
-        border: isSelected ? "2px solid hsl(var(--accent))" : "2px solid transparent",
-        background: isSelected ? "hsl(189,93%,97%)" : "hsl(var(--card))",
+        background: isSelected
+          ? "rgba(143,0,255,0.1)"
+          : "hsl(var(--card))",
+        border: isSelected
+          ? "2px solid #8F00FF"
+          : "2px solid transparent",
+        boxShadow: isSelected
+          ? "0 0 10px rgba(143,0,255,0.15)"
+          : "0 1px 6px rgba(0,0,0,0.06)",
       }}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3.5 p-4">
+        {/* Icon */}
         <div
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-          style={{ background: isSelected ? "hsl(var(--accent)/0.15)" : "hsl(var(--muted))" }}
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px]"
+          style={{
+            background: isSelected
+              ? "hsl(var(--accent)/0.18)"
+              : "hsl(var(--muted))",
+          }}
         >
           <IconComp
             className="h-5 w-5"
             style={{ color: isSelected ? "hsl(var(--accent))" : "hsl(var(--primary))" }}
           />
         </div>
+
+        {/* Info */}
         <div className="min-w-0 flex-1">
-          <div className="mb-0.5 flex items-center gap-1.5">
-            <p className="text-sm font-semibold text-foreground">{service.name}</p>
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <p className="text-sm font-bold text-foreground truncate">{service.name}</p>
             {service.popular && (
               <span
-                className="rounded-full px-1.5 py-0.5 text-[9px] font-bold"
-                style={{ background: "hsl(var(--accent)/0.15)", color: "hsl(var(--accent))" }}
+                className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold tracking-wide uppercase"
+                style={{
+                  background: "hsl(var(--accent)/0.15)",
+                  color: "hsl(var(--accent))",
+                }}
               >
-                POPULAR
+                Popular
               </span>
             )}
           </div>
-          <p className="text-xs text-muted-foreground">{service.duration}</p>
+          <div className="flex items-center gap-1 text-muted-foreground">
+            <Clock className="h-3 w-3 shrink-0" />
+            <p className="text-xs font-medium">{service.duration}</p>
+          </div>
         </div>
-        <div className="flex flex-col items-end gap-1">
-          <p className="text-sm font-bold text-accent">Rs {service.price}</p>
+
+        {/* Price + check */}
+        <div className="flex flex-col items-end gap-1.5">
+          <p className="text-sm font-extrabold" style={{ color: "hsl(var(--accent))" }}>
+            ₹{service.price}
+          </p>
           <div
-            className="flex h-5 w-5 items-center justify-center rounded-full border-2"
+            className="flex h-6 w-6 items-center justify-center rounded-full transition-all"
             style={{
-              borderColor: isSelected ? "hsl(var(--accent))" : "hsl(var(--border))",
-              background: isSelected ? "hsl(var(--accent))" : "transparent",
+              background: isSelected ? "#8F00FF" : "transparent",
+              border: isSelected
+                ? "2px solid #8F00FF"
+                : "2px solid hsl(var(--border))",
             }}
           >
-            {isSelected && <div className="h-2 w-2 rounded-full bg-white" />}
+            {isSelected && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />}
           </div>
         </div>
       </div>
@@ -100,88 +128,133 @@ export default function ServiceSelectionScreen({
   onBack,
   onContinue,
 }: Props) {
-  const total = selected.reduce((acc, service) => acc + service.price, 0);
-  const totalDuration = selected.reduce((acc, service) => acc + Number.parseInt(service.duration, 10), 0);
+  const total = selected.reduce((acc, s) => acc + s.price, 0);
+  const totalDuration = selected.reduce(
+    (acc, s) => acc + Number.parseInt(s.duration, 10),
+    0
+  );
+  const hasSelection = selected.length > 0;
 
   return (
-    <div className="flex min-h-screen flex-col bg-muted pb-32">
-      <div className="brand-gradient px-4 pb-6 pt-12">
+    <div className="flex flex-col bg-background" style={{ height: "100dvh" }}>
+
+      {/* ── Sticky Header ── */}
+      <div className="shrink-0 customer-header px-4 pb-6 pt-4 safe-top">
         <button
           onClick={onBack}
-          className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/20"
+          className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/20 scale-tap"
         >
           <ArrowLeft className="h-5 w-5 text-white" />
         </button>
-        <h1 className="text-2xl font-bold text-white">Choose Services</h1>
-        <p className="mt-1 text-sm text-light-text">{shopName}</p>
+        <h1 className="text-2xl font-bold text-white animate-fade-slide-up">Choose Services</h1>
+        <p className="mt-1 text-sm text-white/70 animate-fade-in-delayed">{shopName}</p>
       </div>
 
-      <div className="flex flex-col gap-3 px-4 pt-4">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+      {/* ── Scrollable Services List ── */}
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-[140px]">
+        <p className="mb-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">
           Select one or more services
         </p>
 
         {services.length === 0 ? (
-          <div className="rounded-[16px] bg-card px-5 py-12 text-center card-shadow">
-            <p className="text-sm font-semibold text-foreground">No services published yet</p>
+          <div className="rounded-[18px] bg-card px-5 py-14 text-center card-shadow mt-4">
+            <Scissors className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
+            <p className="text-sm font-bold text-foreground">No services published yet</p>
             <p className="mt-2 text-xs text-muted-foreground">
               This shop needs to add services before customers can book.
             </p>
           </div>
         ) : (
-          services.map((service) => (
-            <ServiceCard
-              key={service.id}
-              service={service}
-              isSelected={selected.some((selectedService) => selectedService.id === service.id)}
-              onToggle={() => onToggle(service)}
-            />
-          ))
+          <div className="flex flex-col gap-3">
+            {services.map((service) => (
+              <ServiceCard
+                key={service.id}
+                service={service}
+                isSelected={selected.some((s) => s.id === service.id)}
+                onToggle={() => onToggle(service)}
+              />
+            ))}
+          </div>
         )}
       </div>
 
+      {/* ── Fixed Bottom Bar ── */}
       <div
-        className="fixed bottom-0 left-0 right-0 border-t border-border bg-background px-4 py-4"
+        className="shrink-0 fixed bottom-0 left-0 right-0 z-30"
         style={{ maxWidth: "430px", margin: "0 auto" }}
       >
-        {selected.length > 0 && (
+        <div
+          className="px-4 pt-3 pb-5"
+          style={{
+            background: "rgba(255,255,255,0.88)",
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
+            borderTop: "1px solid hsl(var(--border)/0.6)",
+            boxShadow: "0 -8px 32px rgba(0,0,0,0.10)",
+            borderRadius: "20px 20px 0 0",
+          }}
+        >
+          {/* Summary row — always visible */}
           <div className="mb-3 flex items-center justify-between">
             <div>
-              <p className="text-xs text-muted-foreground">
-                {selected.length} service{selected.length > 1 ? "s" : ""} / {totalDuration} min
-              </p>
-              <p className="text-sm font-bold text-foreground">
-                Total: <span className="text-accent">Rs {total}</span>
-              </p>
+              {hasSelection ? (
+                <>
+                  <p className="text-xs font-semibold text-muted-foreground">
+                    {selected.length} service{selected.length > 1 ? "s" : ""} · {totalDuration} min
+                  </p>
+                  <p className="text-base font-extrabold text-foreground mt-0.5">
+                    Total{" "}
+                    <span style={{ color: "hsl(var(--accent))" }}>₹{total}</span>
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm font-medium text-muted-foreground">
+                  No services selected
+                </p>
+              )}
             </div>
-            <div className="flex gap-1">
-              {selected.slice(0, 3).map((service) => {
-                const IconComp = SERVICE_ICONS[service.icon] || Scissors;
 
-                return (
+            {/* Selected service icons */}
+            {hasSelection && (
+              <div className="flex items-center gap-1">
+                {selected.slice(0, 3).map((s) => {
+                  const Icon = SERVICE_ICONS[s.icon] || Scissors;
+                  return (
+                    <div
+                      key={s.id}
+                      className="flex h-9 w-9 items-center justify-center rounded-full"
+                      style={{ background: "hsl(var(--accent)/0.12)" }}
+                    >
+                      <Icon className="h-4 w-4" style={{ color: "hsl(var(--accent))" }} />
+                    </div>
+                  );
+                })}
+                {selected.length > 3 && (
                   <div
-                    key={service.id}
-                    className="flex h-8 w-8 items-center justify-center rounded-full bg-accent/10"
+                    className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold"
+                    style={{
+                      background: "hsl(var(--accent)/0.12)",
+                      color: "hsl(var(--accent))",
+                    }}
                   >
-                    <IconComp className="h-3.5 w-3.5 text-accent" />
+                    +{selected.length - 3}
                   </div>
-                );
-              })}
-            </div>
+                )}
+              </div>
+            )}
           </div>
-        )}
-        <button
-          onClick={onContinue}
-          disabled={selected.length === 0 || services.length === 0}
-          className="gradient-btn h-[50px] w-full rounded-[12px] text-base font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 scale-tap transition-all"
-          style={
-            selected.length === 0 || services.length === 0
-              ? { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }
-              : {}
-          }
-        >
-          Continue {selected.length > 0 ? `/ Rs ${total}` : ""}
-        </button>
+
+          {/* Continue Button */}
+          <button
+            onClick={onContinue}
+            disabled={!hasSelection || services.length === 0}
+            className={`w-full h-[56px] rounded-2xl text-base font-bold text-white scale-tap transition-all disabled:opacity-50 disabled:cursor-not-allowed ${hasSelection && services.length > 0 ? "customer-gradient shadow-[0_0_15px_rgba(143,0,255,0.3)]" : "bg-muted text-muted-foreground"}`}
+          >
+            {hasSelection
+              ? `Continue · ₹${total}`
+              : "Select a service to continue"}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -17,15 +17,21 @@ export const bookingStatusStyles: Record<
 > = {
   pending: {
     label: "Pending",
-    background: "hsl(43 96% 92%)",
-    color: "hsl(31 92% 45%)",
-    border: "hsl(43 88% 80%)",
+    background: "hsl(28 96% 92%)",
+    color: "hsl(28 92% 45%)",
+    border: "hsl(28 88% 80%)",
   },
   confirmed: {
     label: "Confirmed",
-    background: "hsl(189 93% 95%)",
-    color: "hsl(189 93% 31%)",
-    border: "hsl(189 80% 82%)",
+    background: "hsl(214 96% 92%)",
+    color: "hsl(214 92% 45%)",
+    border: "hsl(214 88% 80%)",
+  },
+  in_progress: {
+    label: "In Progress",
+    background: "hsl(270 96% 94%)",
+    color: "hsl(270 70% 50%)",
+    border: "hsl(270 80% 86%)",
   },
   completed: {
     label: "Completed",
@@ -87,3 +93,49 @@ export const getMonthlyEarnings = (bookings: VendorBooking[]) => {
     .filter((booking) => isWithinInterval(parseISO(booking.date), range))
     .reduce((total, booking) => total + booking.price, 0);
 };
+
+export const compressImage = (file: File, maxSize = 800, quality = 0.7): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxSize) {
+            height = Math.round(height * (maxSize / width));
+            width = maxSize;
+          }
+        } else {
+          if (height > maxSize) {
+            width = Math.round(width * (maxSize / height));
+            height = maxSize;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, width, height);
+
+        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+        resolve(dataUrl);
+      };
+      img.onerror = (error) => reject(error);
+    };
+    reader.onerror = (error) => reject(error);
+  });
+};
+
+export async function hashPassword(plainText: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(plainText);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}

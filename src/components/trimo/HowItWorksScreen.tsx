@@ -25,16 +25,16 @@ const steps = [
 export default function HowItWorksScreen({ onBack }: Props) {
   return (
     <div className="flex min-h-screen flex-col bg-muted pb-8">
-      <div className="brand-gradient px-4 pb-8 pt-12">
+      <div className="customer-header px-4 pb-8 pt-12">
         <button
           onClick={onBack}
           className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/15"
         >
           <ArrowLeft className="h-5 w-5 text-white" />
         </button>
-        <p className="text-sm font-medium text-light-text">TRIMO Guide</p>
-        <h1 className="mt-1 text-2xl font-bold text-white">How It Works</h1>
-        <p className="mt-1 text-sm text-light-text">
+        <p className="text-sm font-medium text-light-text animate-fade-in-delayed">TRIMO Guide</p>
+        <h1 className="mt-1 text-2xl font-bold text-white animate-fade-slide-up">How It Works</h1>
+        <p className="mt-1 text-sm text-light-text animate-fade-in-delayed">
           A simple three-step flow for faster, more reliable barber bookings.
         </p>
       </div>

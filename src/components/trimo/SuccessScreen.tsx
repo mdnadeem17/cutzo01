@@ -1,5 +1,6 @@
 import { format, parseISO } from "date-fns";
 import { ArrowRight, Calendar, CheckCircle, Clock, MapPin, Scissors, Share2 } from "lucide-react";
+import { motion } from "framer-motion";
 import { Service, Shop } from "./types";
 
 interface Props {
@@ -9,6 +10,8 @@ interface Props {
   time: string;
   onGoHome: () => void;
   onViewBookings: () => void;
+  id?: string;
+  otp?: number;
 }
 
 const formatBookingDate = (value: string) => {
@@ -19,19 +22,27 @@ const formatBookingDate = (value: string) => {
   }
 };
 
-export default function SuccessScreen({ shop, services, date, time, onGoHome, onViewBookings }: Props) {
+export default function SuccessScreen({ shop, services, date, time, onGoHome, onViewBookings, id, otp }: Props) {
   const total = services.reduce((acc, service) => acc + service.price, 0);
-  const bookingId = `TR${Math.floor(Math.random() * 900000 + 100000)}`;
+  const displayId = id || `TR${Math.floor(Math.random() * 900000 + 100000)}`;
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-start bg-muted px-4 pb-10 pt-10">
       <div className="mb-6 flex flex-col items-center slide-up">
-        <div
+        <motion.div
+          initial={{ scale: 0.3, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{
+            type: "spring",
+            stiffness: 400,
+            damping: 18,
+            delay: 0.1,
+          }}
           className="mb-4 flex h-20 w-20 items-center justify-center rounded-full"
           style={{ background: "hsl(189,93%,43%/0.12)" }}
         >
           <CheckCircle className="h-10 w-10 text-accent" />
-        </div>
+        </motion.div>
         <h1 className="text-center text-2xl font-bold text-foreground">Booking Request Sent</h1>
         <p className="mt-1 text-center text-sm text-muted-foreground">
           The shop owner will review your request and update the status in My Bookings.
@@ -42,14 +53,14 @@ export default function SuccessScreen({ shop, services, date, time, onGoHome, on
         className="w-full max-w-sm overflow-hidden rounded-[20px] bg-card card-shadow slide-up"
         style={{ animationDelay: "100ms" }}
       >
-        <div className="brand-gradient p-5">
+        <div className="customer-header p-5 rounded-b-none">
           <div className="mb-1 flex items-center justify-between">
-            <p className="text-lg font-bold text-white">{shop.name}</p>
+            <p className="text-lg font-bold text-white animate-fade-slide-up">{shop.name}</p>
             <div className="rounded-full bg-white/20 px-2.5 py-1">
-              <p className="text-xs font-semibold text-white">#{bookingId}</p>
+              <p className="text-xs font-semibold text-white animate-fade-in-delayed">#{displayId.slice(-8).toUpperCase()}</p>
             </div>
           </div>
-          <p className="text-xs text-light-text">{shop.address}</p>
+          <p className="text-xs text-light-text animate-fade-in-delayed">{shop.address}</p>
         </div>
 
         <div className="relative mx-0 h-0 border-t-2 border-dashed border-muted">
@@ -107,6 +118,16 @@ export default function SuccessScreen({ shop, services, date, time, onGoHome, on
           </div>
         </div>
 
+        {otp && (
+          <div className="mx-5 mb-5 rounded-xl bg-[#F8F0FF] border border-[#8F00FF] p-4 text-center shadow-[0_0_10px_rgba(143,0,255,0.2)]">
+            <p className="text-[10px] font-black uppercase tracking-widest text-[#8F00FF]/80 mb-1">Service OTP</p>
+            <p className="text-3xl font-black tracking-[0.2em] ml-[0.2em] text-[#8F00FF]">{otp}</p>
+            <p className="mt-1 text-[11px] font-bold text-[#8F00FF]/70">
+              Share this code with the shop to start.
+            </p>
+          </div>
+        )}
+
         <div className="px-5 pb-5">
           <button className="flex h-10 w-full items-center justify-center gap-2 rounded-[10px] border border-border text-sm font-medium text-foreground">
             <Share2 className="h-4 w-4" />
@@ -121,14 +142,14 @@ export default function SuccessScreen({ shop, services, date, time, onGoHome, on
       >
         <button
           onClick={onViewBookings}
-          className="gradient-btn flex h-[50px] w-full items-center justify-center gap-2 rounded-[12px] text-base font-semibold text-white scale-tap transition-transform"
+          className="customer-gradient flex h-[56px] w-full items-center justify-center gap-2 rounded-2xl text-base font-semibold text-white scale-tap transition-transform shadow-[0_0_15px_rgba(143,0,255,0.3)]"
         >
           View My Bookings
           <ArrowRight className="h-4 w-4" />
         </button>
         <button
           onClick={onGoHome}
-          className="h-[44px] w-full rounded-[12px] border border-border text-sm font-medium text-foreground scale-tap transition-transform"
+          className="h-[56px] w-full rounded-2xl bg-white border border-[#8F00FF] text-sm font-semibold text-[#8F00FF] scale-tap transition-transform"
         >
           Back to Home
         </button>

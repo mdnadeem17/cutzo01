@@ -1,4 +1,5 @@
 import { ArrowLeft, ChevronRight, Clock, MapPin, Shield } from "lucide-react";
+import { useLoading } from "./LoadingContext";
 import { Service, Shop } from "./types";
 
 interface Props {
@@ -20,6 +21,7 @@ export default function BookingConfirmationScreen({
   onBack,
   onSuccess,
 }: Props) {
+  const { showLoading, hideLoading } = useLoading();
   const total = services.reduce((acc, service) => acc + service.price, 0);
   const totalDuration = services.reduce(
     (acc, service) => acc + Number.parseInt(service.duration, 10),
@@ -28,15 +30,15 @@ export default function BookingConfirmationScreen({
 
   return (
     <div className="flex min-h-screen flex-col bg-muted pb-32">
-      <div className="brand-gradient px-4 pb-6 pt-12">
+      <div className="customer-header px-4 pb-6 pt-4 safe-top">
         <button
           onClick={onBack}
           className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/20"
         >
           <ArrowLeft className="h-5 w-5 text-white" />
         </button>
-        <h1 className="text-2xl font-bold text-white">Review Booking</h1>
-        <p className="mt-1 text-sm text-light-text">Check details before sending your request</p>
+        <h1 className="text-2xl font-bold text-white animate-fade-slide-up">Review Booking</h1>
+        <p className="mt-1 text-sm text-light-text animate-fade-in-delayed">Check details before sending your request</p>
       </div>
 
       <div className="flex flex-col gap-3 px-4 pt-4">
@@ -123,8 +125,14 @@ export default function BookingConfirmationScreen({
           <p className="text-lg font-bold text-accent">Rs {total}</p>
         </div>
         <button
-          onClick={() => onSuccess({ shop, services, date, time })}
-          className="gradient-btn h-[50px] w-full rounded-[12px] text-base font-semibold text-white shadow-lg scale-tap transition-transform"
+          onClick={() => {
+            showLoading("Sending booking request...");
+            setTimeout(() => {
+              hideLoading();
+              onSuccess({ shop, services, date, time });
+            }, 1200);
+          }}
+          className="customer-gradient h-[56px] w-full rounded-2xl text-base font-semibold text-white shadow-[0_0_15px_rgba(143,0,255,0.3)] scale-tap transition-transform"
         >
           Send Booking Request
         </button>

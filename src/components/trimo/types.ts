@@ -9,13 +9,23 @@ export type Screen =
   | "success"
   | "activity"
   | "profile"
-  | "howItWorks";
+  | "howItWorks"
+  | "savedShops"
+  | "offers"
+  | "personalInfo"
+  | "notifications"
+  | "privacy"
+  | "help"
+  | "about"
+  | "shopLogin"
+  | "registerShop";
 
 export interface Shop {
   id: string;
   ownerId: string;
   name: string;
   image: string;
+  images?: string[];
   rating: number;
   reviewCount: number;
   bookingCount: number;
@@ -30,8 +40,12 @@ export interface Shop {
   about: string;
   openTime: string;
   closeTime: string;
+  isOpen?: boolean;
   services: Service[];
   availabilitySlots: TimeSlot[];
+  slotDuration?: number;
+  maxBookingsPerSlot?: number;
+  breakTime?: { start: string; end: string } | null;
   blockedDates: string[];
 }
 
@@ -51,7 +65,8 @@ export interface TimeSlot {
 
 export interface Booking {
   id: string;
-  shopId: string;
+  shopId: string;   // Convex _id of the shop document
+  ownerId?: string; // ownerId (owner-XXXX) of the shop — used to match vendor bookings
   userId: string;
   customerName?: string;
   customerPhone?: string;
@@ -62,13 +77,16 @@ export interface Booking {
   time: string;
   address: string;
   price: number;
-  status: "pending" | "confirmed" | "cancelled" | "completed";
+  status: "pending" | "confirmed" | "active" | "cancelled" | "completed";
   createdAt?: string;
+  otp?: number;
+  otpVerified?: boolean;
 }
 
 export interface Review {
   reviewId: string;
   userId: string;
+  customerName?: string;
   shopId: string;
   bookingId?: string;
   rating: number;

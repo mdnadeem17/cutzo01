@@ -1,20 +1,38 @@
 import {
   Bell,
+  Bookmark,
   ChevronRight,
   Clock,
-  LocateFixed,
+  HelpCircle,
+  Info,
+  LogOut,
   MapPin,
+  Menu,
+  Scissors,
   Search,
+  Settings,
+  Shield,
   Star,
+  Tag,
   TrendingUp,
+  User,
+  X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useQuery } from "convex/react";
+import { AnimatePresence, motion } from "framer-motion";
+import { App } from "@capacitor/app";
+import useEmblaCarousel from "embla-carousel-react";
+import { useLoading } from "./LoadingContext";
+import { api } from "../../../convex/_generated/api";
 import { CATEGORIES } from "./data";
-import { Shop } from "./types";
+import { CustomerRecord, Screen, Shop } from "./types";
 
 interface Props {
-  shops: Shop[];
   onShopSelect: (shop: Shop) => void;
+  onNavigate: (screen: Screen) => void;
+  onLogout: () => void;
+  customer: CustomerRecord | null;
 }
 
 interface Coordinates {
@@ -22,59 +40,84 @@ interface Coordinates {
   lng: number;
 }
 
-interface VisibleShop extends Shop {
-  distanceKm: number | null;
-}
+function ShopCard({ shop, onSelect }: { shop: Shop; onSelect: () => void }) {
+  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: false });
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
-function ShopCard({ shop, onSelect }: { shop: VisibleShop; onSelect: () => void }) {
+  useEffect(() => {
+    if (!emblaApi) return;
+    emblaApi.on("select", () => setSelectedIndex(emblaApi.selectedScrollSnap()));
+  }, [emblaApi]);
+
   const ratingLabel = shop.reviewCount > 0 ? shop.rating.toFixed(1) : "New";
-  const locationLine =
-    shop.distanceKm !== null ? `${shop.distance} away / ${shop.locationLabel}` : shop.locationLabel;
+  const locationLine = shop.locationLabel;
+    
+  const images = shop.images?.length ? shop.images : [shop.image];
 
   return (
     <div
-      className="mb-4 cursor-pointer overflow-hidden rounded-[16px] bg-card card-shadow scale-tap transition-transform"
+      className="mb-4 cursor-pointer overflow-hidden rounded-[16px] bg-white card-shadow scale-tap transition-transform"
       onClick={onSelect}
     >
-      <div className="relative h-44 overflow-hidden">
-        <img src={shop.image} alt={shop.name} className="h-full w-full object-cover" />
-        <div className="absolute left-3 top-3 rounded-full bg-primary/90 px-2.5 py-1 backdrop-blur-sm">
-          <span className="text-xs font-medium text-white">{shop.category}</span>
+      <div className="relative h-48 overflow-hidden rounded-t-[16px]" ref={emblaRef}>
+        <div className="flex h-full touch-pan-y">
+          {images.map((img, idx) => (
+            <div className="relative min-w-0 flex-[0_0_100%] h-full" key={idx}>
+              <img src={img} alt={`${shop.name} ${idx + 1}`} className="h-full w-full object-cover" />
+            </div>
+          ))}
         </div>
-        <div className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 backdrop-blur-sm">
-          <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-          <span className="text-xs font-semibold text-foreground">{ratingLabel}</span>
-          <span className="text-xs text-muted-foreground">
-            ({shop.reviewCount > 0 ? shop.reviewCount : 0})
+        
+        {/* Top left badge */}
+        <div className={`absolute left-3 top-3 rounded-full px-2.5 py-1 backdrop-blur-md shadow-sm ${shop.isOpen === false ? 'bg-red-500/95' : 'bg-black/60'}`}>
+          <span className="text-[10px] font-bold tracking-wider text-white uppercase">
+            {shop.isOpen === false ? "Closed" : "Barber Shop"}
           </span>
         </div>
+        
+        {/* Top right rating */}
+        <div className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 backdrop-blur-md shadow-sm">
+          <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
+          <span className="text-xs font-bold text-foreground">{ratingLabel}</span>
+        </div>
+
+        {/* Bottom dots for multiple images */}
+        {images.length > 1 && (
+          <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5 z-10">
+            {images.map((_, idx) => (
+              <div 
+                key={idx} 
+                className={`h-1.5 rounded-full transition-all duration-300 ${idx === selectedIndex ? "w-4 bg-white" : "w-1.5 bg-white/50"}`}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
-      <div className="p-4">
-        <div className="mb-1.5 flex items-start justify-between">
-          <h3 className="text-[16px] font-semibold leading-tight text-card-foreground">{shop.name}</h3>
-          <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+      <div className="p-3.5">
+        <div className="mb-2">
+          <h3 className="text-lg font-bold leading-tight text-foreground">{shop.name}</h3>
         </div>
 
-        <div className="mb-3 flex items-center gap-1 text-muted-foreground">
+        <div className="mb-3 flex items-center gap-1.5 text-muted-foreground">
           <MapPin className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate text-xs">{locationLine}</span>
+          <span className="truncate text-xs font-medium">{locationLine}</span>
         </div>
 
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3 mb-4">
           <div>
-            <span className="text-sm font-bold text-accent">
-              {shop.startingPrice > 0 ? `Services from Rs ${shop.startingPrice}` : "Pricing not set"}
+            <span className="text-sm font-extrabold text-foreground">
+              {shop.startingPrice > 0 ? `Services from ₹${shop.startingPrice}` : "Pricing not set"}
             </span>
           </div>
-          <div className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1">
-            <Clock className="h-3 w-3 text-muted-foreground" />
-            <span className="text-xs font-medium text-muted-foreground">{shop.nextSlot}</span>
+          <div className="flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1">
+            <Clock className="h-3.5 w-3.5 text-primary" />
+            <span className="text-xs font-bold text-primary">{shop.nextSlot}</span>
           </div>
         </div>
 
         <button
-          className="gradient-btn mt-3 h-[42px] w-full rounded-[10px] text-sm font-semibold text-white scale-tap transition-transform"
+          className="customer-gradient h-[46px] w-full rounded-xl text-sm font-bold tracking-wide text-white scale-tap transition-transform shadow-[0_0_10px_rgba(143,0,255,0.25)]"
           onClick={(event) => {
             event.stopPropagation();
             onSelect();
@@ -101,110 +144,288 @@ function SkeletonCard() {
   );
 }
 
-const parseGpsLocation = (value?: string): Coordinates | null => {
-  if (!value) {
-    return null;
-  }
+// ── Drawer Menu Component ────────────────────────────────────────────────
+function DrawerMenu({
+  isOpen,
+  onClose,
+  onNavigate,
+  onLogout,
+  customer,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onNavigate: (screen: Screen) => void;
+  onLogout: () => void;
+  customer: CustomerRecord | null;
+}) {
+  // Handle Android back button
+  useEffect(() => {
+    if (!isOpen) return;
+    const backListener = App.addListener("backButton", () => {
+      onClose();
+    });
+    return () => {
+      backListener.then((l) => l.remove());
+    };
+  }, [isOpen, onClose]);
 
-  const match = value.match(/Lat\s*(-?\d+(?:\.\d+)?),\s*Lng\s*(-?\d+(?:\.\d+)?)/i);
+  const initials = customer ? customer.name.slice(0, 2).toUpperCase() : "GU";
 
-  if (!match) {
-    return null;
-  }
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+            onClick={onClose}
+          />
 
-  return {
-    lat: Number(match[1]),
-    lng: Number(match[2]),
-  };
-};
+          {/* Drawer */}
+          <motion.div
+            initial={{ x: "-100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "-100%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            className="fixed inset-y-0 left-0 z-50 w-[75%] max-w-[320px] bg-background shadow-2xl safe-top safe-bottom flex flex-col"
+          >
+            {/* Header */}
+            <div className="customer-header px-4 pb-6 pt-6 relative">
+              <button
+                onClick={onClose}
+                className="absolute right-4 top-6 flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white scale-tap"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-white/50 bg-white/30 shadow-sm animate-scale-in">
+                  <span className="text-lg font-bold text-white">{initials}</span>
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-lg animate-fade-slide-up">{customer ? customer.name : "Guest User"}</h3>
+                  <button
+                    onClick={() => {
+                      onClose();
+                      onNavigate("profile");
+                    }}
+                    className="text-xs font-semibold text-white/80 animate-fade-in-delayed"
+                  >
+                    View Profile
+                  </button>
+                </div>
+              </div>
+            </div>
 
-const calculateDistanceKm = (source: Coordinates, target: Coordinates) => {
-  const toRadians = (value: number) => (value * Math.PI) / 180;
-  const earthRadiusKm = 6371;
-  const latDelta = toRadians(target.lat - source.lat);
-  const lngDelta = toRadians(target.lng - source.lng);
-  const a =
-    Math.sin(latDelta / 2) * Math.sin(latDelta / 2) +
-    Math.cos(toRadians(source.lat)) *
-      Math.cos(toRadians(target.lat)) *
-      Math.sin(lngDelta / 2) *
-      Math.sin(lngDelta / 2);
+            {/* Menu Items */}
+            <div className="flex-1 overflow-y-auto px-4 py-4 hide-scrollbar">
+              <div className="mb-6">
+                <p className="mb-2 px-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  Menu
+                </p>
+                <div className="flex flex-col gap-1">
+                  {[
+                    { icon: Scissors, label: "My Bookings", screen: "activity" as Screen },
+                    { icon: Bookmark, label: "Saved Shops", screen: "savedShops" as Screen },
+                    { icon: Tag, label: "Offers & Coupons", screen: "offers" as Screen },
+                  ].map(({ icon: Icon, label, screen }) => (
+                    <button
+                      key={label}
+                      onClick={() => { onClose(); onNavigate(screen); }}
+                      className="flex items-center gap-3 rounded-[12px] px-3 py-3 text-left hover:bg-muted scale-tap transition-colors"
+                    >
+                      <Icon className="h-5 w-5 text-primary" />
+                      <span className="text-sm font-semibold text-foreground">{label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-};
+              <div className="mb-6">
+                <p className="mb-2 px-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  Business
+                </p>
+                <div className="flex flex-col gap-1">
+                  {[
+                    { icon: TrendingUp, label: "Register Your Shop", screen: "registerShop" as Screen },
+                    { icon: User, label: "Shop Owner Login", screen: "shopLogin" as Screen },
+                  ].map(({ icon: Icon, label, screen }) => (
+                    <button
+                      key={label}
+                      onClick={() => { onClose(); onNavigate(screen); }}
+                      className="flex items-center gap-3 rounded-[12px] px-3 py-3 text-left hover:bg-muted scale-tap transition-colors"
+                    >
+                      <Icon className="h-5 w-5 text-accent" />
+                      <span className="text-sm font-semibold text-foreground">{label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <p className="mb-2 px-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  Support
+                </p>
+                <div className="flex flex-col gap-1">
+                  {[
+                    { icon: HelpCircle, label: "Help Center", screen: "help" as Screen },
+                    { icon: MapPin, label: "How TRIMO Works", screen: "howItWorks" as Screen },
+                    { icon: Info, label: "About TRIMO", screen: "about" as Screen },
+                    { icon: Shield, label: "Privacy Policy", screen: "privacy" as Screen },
+                  ].map(({ icon: Icon, label, screen }) => (
+                    <button
+                      key={label}
+                      onClick={() => { onClose(); onNavigate(screen); }}
+                      className="flex items-center gap-3 rounded-[12px] px-3 py-2.5 text-left hover:bg-muted scale-tap transition-colors"
+                    >
+                      <Icon className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium text-muted-foreground">{label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-border p-4">
+              {customer && (
+                <button
+                  onClick={onLogout}
+                  className="mb-4 flex w-full items-center justify-center gap-2 rounded-[12px] bg-destructive/10 py-3 scale-tap transition-transform"
+                >
+                  <LogOut className="h-4 w-4 text-destructive" />
+                  <span className="text-sm font-bold text-destructive">Logout</span>
+                </button>
+              )}
+              <p className="text-center text-xs font-semibold text-muted-foreground opacity-60">
+                TRIMO App v1.0
+              </p>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
 
 const getTrendingScore = (shop: Shop) => shop.rating * 100 + shop.bookingCount;
 
-export default function HomeScreen({ shops, onShopSelect }: Props) {
-  const [activeCategory, setActiveCategory] = useState("All");
+export default function HomeScreen({ onShopSelect, onNavigate, onLogout, customer }: Props) {
   const [searchText, setSearchText] = useState("");
-  const [loading] = useState(false);
-  const [locationState, setLocationState] = useState<"idle" | "loading" | "granted" | "denied">("idle");
-  const [locationMessage, setLocationMessage] = useState("");
-  const [currentCoords, setCurrentCoords] = useState<Coordinates | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const { showLoading, hideLoading } = useLoading();
+
+  const handleScroll = () => {
+    if (scrollRef.current) {
+      setIsScrolled(scrollRef.current.scrollTop > 10);
+    }
+  };
+
+  // ── Pull-to-refresh state ───────────────────────────────────────────────
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pullDistance, setPullDistance] = useState(0);
+  const [startY, setStartY] = useState(0);
+  const REFRESH_THRESHOLD = 80;
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (scrollRef.current && scrollRef.current.scrollTop === 0) {
+      setStartY(e.touches[0].pageY);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (startY === 0 || (scrollRef.current && scrollRef.current.scrollTop > 0)) return;
+    const currentY = e.touches[0].pageY;
+    if (currentY <= startY) return; // Ignore upward swipes
+    
+    const distance = currentY - startY;
+    // Apply logarithmic damping for authentic native tension
+    const maxPull = 160;
+    const resistantDist = maxPull * Math.log10(1 + (distance * 0.5) / maxPull);
+    setPullDistance(resistantDist);
+  };
+
+  const handleTouchEnd = () => {
+    if (pullDistance > REFRESH_THRESHOLD) {
+      triggerRefresh();
+    }
+    setPullDistance(0);
+    setStartY(0);
+  };
+
+  const triggerRefresh = () => {
+    setIsRefreshing(true);
+    showLoading("Refreshing live data...");
+    setTimeout(() => {
+      setIsRefreshing(false);
+      hideLoading();
+    }, 800);
+  };
+
+  // Global loader for initial shop fetch
+  const convexShopsQuery = useQuery(api.shops.getShops);
+  const loading = convexShopsQuery === undefined;
+  
+  const convexShops = convexShopsQuery ?? [];
+
+  // Notifications logic
+  const notifications = useQuery(api.profile.getUserNotifications, customer ? { userId: customer.userId } : "skip");
+  const unreadCount = notifications?.filter((n) => !n.isRead).length || 0;
+
+  // Map Convex shop records to the local Shop type
+  const shops: Shop[] = convexShops.map((s) => {
+    const services = s.servicesJson ? (() => { try { return JSON.parse(s.servicesJson); } catch { return []; } })() : [];
+    const availabilitySlots = s.availabilitySlotsJson ? (() => { try { return JSON.parse(s.availabilitySlotsJson); } catch { return []; } })() : [];
+    const blockedDates = s.blockedDatesJson ? (() => { try { return JSON.parse(s.blockedDatesJson); } catch { return []; } })() : [];
+    return {
+      id: s._id as string,
+      ownerId: s.ownerId,
+      name: s.shopName,
+      address: s.address,
+      image: s.images?.[0] ?? s.image ?? "https://images.unsplash.com/photo-1585747860715-2ba37e788b70?auto=format&fit=crop&w=800&q=80",
+      images: s.images && s.images.length > 0 ? s.images : s.image ? [s.image] : [],
+      rating: s.rating,
+      reviewCount: s.totalReviews,
+      bookingCount: 0,
+      distance: s.locationLabel ?? s.address,
+      locationLabel: s.locationLabel ?? s.address,
+      startingPrice: s.startingPrice ?? 0,
+      nextSlot: s.nextSlot ?? "Available",
+      gpsLocation: s.gpsLocation,
+      category: "Barber Shop",
+      tags: [],
+      about: "",
+      openTime: s.openTime ?? "09:00",
+      closeTime: s.closeTime ?? "21:00",
+      isOpen: s.isOpen ?? true,
+      slotDuration: s.slotDuration,
+      maxBookingsPerSlot: s.maxBookingsPerSlot,
+      breakTime: s.breakTime,
+      services: services.map((svc: any, idx: number) => ({
+        id: svc.id ?? `svc-${idx}`,
+        name: svc.name ?? "",
+        icon: "Scissors",
+        duration: `${svc.durationMinutes ?? 30} min`,
+        price: svc.price ?? 0,
+        popular: idx === 0,
+      })),
+      availabilitySlots: availabilitySlots.map((slot: any) => ({
+        time: slot.time,
+        available: slot.enabled ?? true,
+      })),
+      blockedDates: blockedDates.map((entry: any) => entry.date ?? entry),
+    };
+  });
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : "Good Evening";
 
-  const requestNearby = () => {
-    setActiveCategory("Near Me");
-
-    if (!navigator.geolocation) {
-      setLocationState("denied");
-      setLocationMessage("Please allow location to find nearby shops");
-      return;
-    }
-
-    setLocationState("loading");
-    setLocationMessage("Finding barber shops near you...");
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setCurrentCoords({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        });
-        setLocationState("granted");
-        setLocationMessage("Showing barber shops with live location data near you.");
-      },
-      () => {
-        setLocationState("denied");
-        setLocationMessage("Please allow location to find nearby shops");
-      }
-    );
-  };
-
-  const handleFilterClick = (category: string) => {
-    if (category === "Near Me") {
-      requestNearby();
-      return;
-    }
-
-    setActiveCategory(category);
-    setLocationMessage("");
-  };
-
-  const visibleShops: VisibleShop[] = shops.map((shop) => {
-    if (!currentCoords) {
-      return { ...shop, distanceKm: null };
-    }
-
-    const targetCoords = parseGpsLocation(shop.gpsLocation);
-
-    if (!targetCoords) {
-      return { ...shop, distanceKm: null };
-    }
-
-    const distanceKm = calculateDistanceKm(currentCoords, targetCoords);
-
-    return {
-      ...shop,
-      distanceKm,
-      distance: `${distanceKm.toFixed(1)} km`,
-    };
-  });
-
-  const searchedShops = visibleShops.filter((shop) => {
+  const searchedShops = shops.filter((shop) => {
     const matchesSearch =
       shop.name.toLowerCase().includes(searchText.toLowerCase()) ||
       shop.address.toLowerCase().includes(searchText.toLowerCase()) ||
@@ -213,151 +434,125 @@ export default function HomeScreen({ shops, onShopSelect }: Props) {
     return matchesSearch;
   });
 
-  const filtered =
-    activeCategory === "Near Me"
-      ? locationState === "granted"
-        ? searchedShops
-            .filter((shop) => shop.distanceKm !== null)
-            .sort((left, right) => (left.distanceKm ?? 999) - (right.distanceKm ?? 999))
-        : []
-      : activeCategory === "Trending"
-        ? [...searchedShops]
-            .sort((left, right) => getTrendingScore(right) - getTrendingScore(left))
-            .slice(0, 6)
-        : searchedShops;
-
-  const resultLabel =
-    activeCategory === "Trending"
-      ? "Trending shops"
-      : activeCategory === "Near Me"
-        ? "Nearby shops"
-        : "shops found";
+  const filtered = (() => {
+    const result = [...searchedShops];
+    result.sort((a, b) => getTrendingScore(b) - getTrendingScore(a));
+    return result;
+  })();
 
   return (
-    <div className="flex min-h-screen flex-col bg-background pb-20">
+    <div className="flex h-screen flex-col bg-background">
+      {/* Pull-to-refresh Indicator */}
       <div
-        className="brand-gradient sticky top-0 z-10 px-4 pb-5 pt-12"
-        style={{ boxShadow: "0 18px 40px rgba(30,58,138,0.16)" }}
+        className="absolute left-0 right-0 top-0 z-[100] flex justify-center overflow-hidden pointer-events-none transition-all duration-300"
+        style={{
+          height: isRefreshing ? "80px" : `${pullDistance}px`,
+          opacity: isRefreshing || pullDistance > 20 ? 1 : 0,
+        }}
       >
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-white/70">
-              {greeting}
-            </p>
-            <h1 className="mt-2 text-[28px] font-bold leading-tight text-white">
-              Book the right barber
-              <br />
-              near you
-            </h1>
+        <div className="mt-12 flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-lg pointer-events-auto">
+          <div className={`ptr-spinner`} />
+        </div>
+      </div>
+
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-20 bg-white shadow-[0_2px_10px_rgba(0,0,0,0.06)] pt-[44px] pb-[8px] px-4 flex-none safe-top">
+        <div className="flex flex-col items-center justify-center">
+          <h1 className="font-montserrat text-2xl font-bold tracking-tight text-primary leading-tight">
+            TRIMO
+          </h1>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mt-[2px] mb-[10px]">
+            India's Barber Booking App
+          </p>
+        </div>
+      </div>
+
+      {/* Scrollable Content Container */}
+      <div 
+        ref={scrollRef}
+        onScroll={handleScroll}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        className="flex-1 overflow-y-auto px-[16px] pt-[10px] pb-[110px] scroll-smooth"
+      >
+        <div className="flex items-center gap-[12px] mb-[20px]">
+          <div className="flex-1 rounded-[22px] border border-border bg-white px-4 py-3 shadow-sm transition-all focus-within:shadow-md focus-within:border-primary/20">
+            <div className="flex items-center gap-3">
+              <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <input
+                className="flex-1 bg-transparent text-[15px] font-medium text-foreground placeholder:text-muted-foreground outline-none w-full"
+                placeholder="Search barber shops..."
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+              />
+            </div>
           </div>
+          
           <button
-            className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-white/10 backdrop-blur-xl"
-            style={{ boxShadow: "0 12px 24px rgba(9,25,71,0.14)" }}
+            onClick={() => onNavigate("notifications")}
+            className="flex h-[46px] w-[46px] flex-shrink-0 items-center justify-center rounded-[16px] border border-border bg-white scale-tap transition-transform shadow-sm relative"
           >
-            <Bell className="h-5 w-5 text-white" />
+            <Bell className="h-5 w-5 text-foreground" />
+            {unreadCount > 0 && (
+              <span className="absolute right-3 top-2.5 h-2.5 w-2.5 rounded-full bg-[#8F00FF] ring-2 ring-white" />
+            )}
           </button>
         </div>
 
-        <div
-          className="rounded-[22px] border border-white/14 px-4 py-3 backdrop-blur-xl"
-          style={{
-            background: "rgba(255,255,255,0.14)",
-            boxShadow: "0 16px 30px rgba(8,24,68,0.18)",
-          }}
-        >
-          <div className="flex items-center gap-3">
-            <Search className="h-4 w-4 shrink-0 text-white/80" />
-            <input
-              className="flex-1 bg-transparent text-[15px] font-medium text-white placeholder:text-white/70 outline-none"
-              placeholder="Search barber shops..."
-              value={searchText}
-              onChange={(event) => setSearchText(event.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="mt-4 overflow-x-auto scrollbar-hide pb-1">
-          <div className="inline-flex min-w-full gap-2">
-            {CATEGORIES.map((category) => (
-              <button
-                key={category}
-                onClick={() => handleFilterClick(category)}
-                className="h-10 shrink-0 rounded-[16px] px-4 text-[13px] font-semibold tracking-[0.01em] scale-tap transition-all"
-                style={{
-                  background: activeCategory === category ? "#06B6D4" : "rgba(255,255,255,0.2)",
-                  color: activeCategory === category ? "#ffffff" : "#E0E7FF",
-                  boxShadow: activeCategory === category ? "0 10px 22px rgba(6,182,212,0.28)" : "none",
-                }}
-              >
-                {category}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {activeCategory === "Near Me" && locationMessage && (
-          <div
-            className="mt-4 flex items-start gap-3 rounded-[18px] border px-4 py-3 backdrop-blur-xl"
-            style={{
-              background:
-                locationState === "denied" ? "rgba(239,68,68,0.12)" : "rgba(255,255,255,0.14)",
-              borderColor:
-                locationState === "denied" ? "rgba(239,68,68,0.24)" : "rgba(255,255,255,0.14)",
-            }}
-          >
-            <LocateFixed
-              className="mt-0.5 h-4 w-4 shrink-0"
-              style={{ color: locationState === "denied" ? "#fecaca" : "#ffffff" }}
-            />
-            <p className="text-xs leading-relaxed text-[#E0E7FF]">{locationMessage}</p>
-          </div>
-        )}
-
-        {activeCategory === "Trending" && (
-          <div
-            className="mt-4 flex items-start gap-3 rounded-[18px] border border-white/14 px-4 py-3 backdrop-blur-xl"
-            style={{ background: "rgba(255,255,255,0.14)" }}
-          >
-            <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-white" />
-            <p className="text-xs leading-relaxed text-[#E0E7FF]">
-              Trending shops are ranked using live bookings and customer reviews from this app.
-            </p>
-          </div>
-        )}
-      </div>
-
-      <div className="px-4 pt-5">
         <div className="mb-4 flex items-center justify-between">
           <p className="text-sm font-semibold text-foreground">
-            {filtered.length} {resultLabel}
-          </p>
-          <p className="text-xs font-semibold text-accent">
-            {activeCategory === "Trending" ? "Live Ranking" : "Live Availability"}
+            {loading ? "Loading..." : `${convexShops.length} Barber Shops Available`}
           </p>
         </div>
 
-        {loading
-          ? Array.from({ length: 3 }).map((_, index) => <SkeletonCard key={index} />)
-          : filtered.map((shop) => (
-              <ShopCard key={shop.id} shop={shop} onSelect={() => onShopSelect(shop)} />
+        {loading ? (
+          <div className="py-20 flex justify-center items-center">
+             <div className="flex space-x-2">
+               <div className="h-2.5 w-2.5 rounded-full bg-primary/60 dot-wave" style={{ animationDelay: "0s" }} />
+               <div className="h-2.5 w-2.5 rounded-full bg-primary/60 dot-wave" style={{ animationDelay: "0.15s" }} />
+               <div className="h-2.5 w-2.5 rounded-full bg-primary/60 dot-wave" style={{ animationDelay: "0.3s" }} />
+             </div>
+          </div>
+        ) : (
+          <motion.div
+            variants={{
+              hidden: { opacity: 0 },
+              show: {
+                opacity: 1,
+                transition: { staggerChildren: 0.1 },
+              },
+            }}
+            initial="hidden"
+            animate="show"
+          >
+            {filtered.map((shop) => (
+              <motion.div
+                key={shop.id}
+                variants={{
+                  hidden: { opacity: 0, y: 30 },
+                  show: {
+                    opacity: 1,
+                    y: 0,
+                    transition: { duration: 0.4, ease: [0.25, 0.1, 0.25, 1] },
+                  },
+                }}
+                className="mb-[16px]"
+              >
+                <ShopCard shop={shop} onSelect={() => onShopSelect(shop)} />
+              </motion.div>
             ))}
+          </motion.div>
+        )}
 
         {!loading && filtered.length === 0 && (
           <div className="py-16 text-center text-muted-foreground">
             <Search className="mx-auto mb-3 h-10 w-10 opacity-30" />
-            <p className="font-medium">
-              {activeCategory === "Near Me" && locationState === "denied"
-                ? "Location permission needed"
-                : shops.length === 0
-                  ? "No live shops yet"
-                  : "No shops found"}
-            </p>
+            <p className="font-medium">No shops found</p>
             <p className="mt-1 text-xs">
-              {activeCategory === "Near Me" && locationState === "denied"
-                ? "Please allow location to find nearby shops"
-                : shops.length === 0
-                  ? "A shop will appear here once an owner finishes setup and publishes services."
-                  : "Try a different search or filter"}
+              {shops.length === 0
+                ? "A shop will appear here once an owner finishes setup and publishes services."
+                : "Try a different search."}
             </p>
           </div>
         )}

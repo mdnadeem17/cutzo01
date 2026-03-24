@@ -26,3 +26,9 @@ preview*.err
 *.njsproj
 *.sln
 *.sw?
+
+# Environment secrets — NEVER commit
+.env
+.env.local
+.env.production
+.env.*.local

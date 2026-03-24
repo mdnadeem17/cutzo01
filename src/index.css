@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -7,13 +7,18 @@
 @layer base {
   :root {
     /* TRIMO Brand Colors (HSL) */
-    --primary: 222 71% 32%;
-    --primary-mid: 221 83% 53%;
-    --primary-light: 217 91% 60%;
-    --accent: 189 93% 43%;
+    /* Primary: #1E3A8A */
+    --primary: 224 64% 33%;
+    --primary-mid: 224 64% 45%;
+    --primary-light: 224 64% 55%;
+    
+    /* Accent: #06B6D4 */
+    --accent: 189 94% 43%;
     --accent-foreground: 0 0% 100%;
 
-    --background: 0 0% 100%;
+    /* Background: #F8FAFC */
+    --background: 210 40% 98%;
+    /* Text Primary: #0F172A */
     --foreground: 222 47% 11%;
 
     --card: 0 0% 100%;
@@ -24,20 +29,21 @@
 
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 14% 96%;
+    --secondary: 210 40% 96%;
     --secondary-foreground: 222 47% 11%;
 
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
+    --muted: 210 40% 96%;
+    /* Text Secondary: #64748B */
+    --muted-foreground: 215 16% 47%;
 
     --light-text: 226 100% 94%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 222 71% 32%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 224 64% 33%;
 
     --radius: 1rem;
 
@@ -80,6 +86,13 @@
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
+
+  .customer-theme {
+    --primary: 274 100% 50%;
+    --primary-mid: 268 100% 40%;
+    --primary-light: 274 100% 80%;
+    --ring: 274 100% 50%;
+  }
 }
 
 @layer base {
@@ -91,16 +104,25 @@
     height: 100%;
     margin: 0;
     padding: 0;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    user-select: none;
+    -webkit-user-select: none;
+    overscroll-behavior-y: none;
   }
   html, #root {
     height: 100%;
     margin: 0;
     padding: 0;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .app-container {
     min-height: 100vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }
 
@@ -115,6 +137,10 @@
       hsl(217,91%,60%) 70%,
       hsl(226,100%,97%) 100%
     );
+  }
+
+  .customer-gradient {
+    background: linear-gradient(to right, #8F00FF, #5F00CC);
   }
 
   .card-shadow { box-shadow: 0 10px 25px rgba(0,0,0,0.08); }
@@ -134,23 +160,131 @@
     100% { background-position: -200% 0; }
   }
 
+  /* ── Bottom-sheet slide-up ───────────────────────────────── */
   .slide-up {
     animation: slideUp 0.35s cubic-bezier(0.16,1,0.3,1) both;
   }
-
   @keyframes slideUp {
     from { opacity: 0; transform: translateY(24px); }
     to   { opacity: 1; transform: translateY(0); }
   }
 
+  /* ── Generic fade ────────────────────────────────────────── */
   .fade-in {
-    animation: fadeIn 0.3s ease both;
+    animation: fadeIn 0.22s ease both;
   }
-
   @keyframes fadeIn {
     from { opacity: 0; }
     to   { opacity: 1; }
   }
 
-  .scale-tap:active { transform: scale(0.97); }
+  /* ── Screen-level transitions (forward navigation) ──────── */
+  .screen-enter {
+    animation: screenEnter 0.26s cubic-bezier(0.25,0.46,0.45,0.94) both;
+  }
+  @keyframes screenEnter {
+    from { opacity: 0; transform: translateX(28px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  /* ── Screen-level transitions (back navigation) ─────────── */
+  .screen-enter-back {
+    animation: screenEnterBack 0.26s cubic-bezier(0.25,0.46,0.45,0.94) both;
+  }
+  @keyframes screenEnterBack {
+    from { opacity: 0; transform: translateX(-28px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  /* ── Pull-to-refresh spinner ─────────────────────────────── */
+  .ptr-spinner {
+    width: 28px; height: 28px;
+    border: 3px solid hsl(var(--border));
+    border-top-color: hsl(var(--primary));
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* ── 3-Dot Wave Loading ──────────────────────────────────── */
+  .dot-wave {
+    animation: wave 1.2s cubic-bezier(0.2, 0.68, 0.18, 1.08) infinite;
+  }
+  @keyframes wave {
+    0%, 100% { transform: translateY(0); opacity: 0.4; }
+    50%      { transform: translateY(-8px); opacity: 1; }
+  }
+
+  /* ── Safe-area padding (transparent status bar) ──────────── */
+  .safe-top    { padding-top: env(safe-area-inset-top, 0px); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+  /* ── Tap feedback ────────────────────────────────────────── */
+  .scale-tap { transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+  .scale-tap:active { transform: scale(0.96); }
+
+  /* Smooth slider hide scroll */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* ── Customer App Advanced Gradients & Animations ────────── */
+  @keyframes gradient-shift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+
+  .customer-header-bg {
+    background: linear-gradient(135deg, #8F00FF 0%, #B84DFF 100%);
+    background-size: 200% 200%;
+    animation: gradient-shift 10s ease-in-out infinite;
+  }
+
+  .customer-header {
+    @apply customer-header-bg rounded-b-[30px] shadow-[0_6px_20px_rgba(143,0,255,0.2)];
+  }
+
+  .splash-gradient {
+    background: linear-gradient(180deg, #8F00FF 0%, #4B00B5 100%);
+    background-size: 200% 200%;
+    animation: gradient-shift 12s ease-in-out infinite;
+  }
+
+  .animate-fade-slide-up {
+    animation: fadeSlideUp 0.6s ease-out both;
+  }
+  @keyframes fadeSlideUp {
+    from { opacity: 0; transform: translateY(15px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-fade-in-delayed {
+    animation: fadeIn 0.5s ease-out 0.2s both;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.8); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  .animate-float-glow {
+    animation: floatGlow 4s ease-in-out infinite;
+  }
+  @keyframes floatGlow {
+    0%, 100% { transform: translateY(0); box-shadow: 0 0 15px rgba(255,255,255,0.1); }
+    50% { transform: translateY(-8px); box-shadow: 0 0 30px rgba(255,255,255,0.4); }
+  }
+
+  .animate-dots {
+    animation: fadeInLoop 1.5s infinite;
+  }
+  @keyframes fadeInLoop {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+  }
 }

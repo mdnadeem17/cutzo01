@@ -1,6 +1,6 @@
 import { useState } from "react";
 import ShopOwnerAuth from "./ShopOwnerAuth";
-import { getActiveShopOwner, saveShopOwner, ShopOwnerRecord } from "./storage";
+import { clearShopOwnerSession, getActiveShopOwner, saveShopOwner, ShopOwnerRecord } from "./storage";
 import VendorApp from "./VendorApp";
 
 interface Props {
@@ -19,6 +19,11 @@ export default function ShopOwnerPortal({ onBackToCustomer }: Props) {
     setActiveOwner(user);
   };
 
+  const handleLogout = () => {
+    clearShopOwnerSession();
+    setActiveOwner(null);
+  };
+
   if (!activeOwner) {
     return (
       <ShopOwnerAuth
@@ -31,6 +36,7 @@ export default function ShopOwnerPortal({ onBackToCustomer }: Props) {
   return (
     <VendorApp
       onExit={onBackToCustomer}
+      onLogout={handleLogout}
       ownerRecord={activeOwner}
       onOwnerRecordChange={handleOwnerUpdate}
     />

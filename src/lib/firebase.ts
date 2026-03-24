@@ -1,20 +1,14 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getAuth } from "firebase/auth";
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "YOUR_API_KEY",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "YOUR_AUTH_DOMAIN",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "YOUR_PROJECT_ID",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "YOUR_STORAGE_BUCKET",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "YOUR_SENDER_ID",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "YOUR_APP_ID"
+  apiKey: "AIzaSyAUkT3h3owQ0eUTdfNR13-GBIb9pCbKGBg",
+  authDomain: "trimo-e4f93.firebaseapp.com",
+  projectId: "trimo-e4f93",
+  storageBucket: "trimo-e4f93.firebasestorage.app",
+  messagingSenderId: "648252665759",
+  appId: "1:648252665759:web:ea123456789" // Placeholder if real one is unknown, or just omit if only using auth
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
-
-// Initialize Firebase Auth and get a reference to the service
 export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();

@@ -3,26 +3,46 @@ import { v } from "convex/values";
 
 export const createUser = mutation({
   args: {
+    uid: v.string(),
     name: v.string(),
-    phone: v.string(),
-    email: v.string(),
-    role: v.union(v.literal("customer"), v.literal("shop_owner")),
     location: v.optional(v.string()),
+    email: v.string(),
+    phone: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("by_uid", (q) => q.eq("uid", args.uid))
+      .first();
+
+    if (existing) {
+      // Update existing user
+      await ctx.db.patch(existing._id, {
+        name: args.name,
+        location: args.location,
+        phone: args.phone,
+      });
+      return existing._id;
+    }
+
+    // Insert new user
     return await ctx.db.insert("users", {
+      uid: args.uid,
       name: args.name,
-      phone: args.phone,
       email: args.email,
-      role: args.role,
       location: args.location,
+      phone: args.phone,
+      role: "customer",
     });
   },
 });
 
-export const getUser = query({
-  args: { userId: v.id("users") },
+export const getUserById = query({
+  args: { uid: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.userId);
+    return await ctx.db
+      .query("users")
+      .withIndex("by_uid", (q) => q.eq("uid", args.uid))
+      .first();
   },
 });

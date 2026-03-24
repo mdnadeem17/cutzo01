@@ -2,7 +2,7 @@ export type VendorTab = "dashboard" | "bookings" | "services" | "profile";
 
 export type VendorScreen = VendorTab | "availability" | "earnings";
 
-export type VendorBookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
+export type VendorBookingStatus = "pending" | "confirmed" | "active" | "completed" | "cancelled";
 
 export interface VendorBooking {
   id: string;
@@ -12,6 +12,8 @@ export interface VendorBooking {
   time: string;
   price: number;
   status: VendorBookingStatus;
+  otp?: number;
+  otpVerified?: boolean;
 }
 
 export interface VendorService {
@@ -19,6 +21,9 @@ export interface VendorService {
   name: string;
   durationMinutes: number;
   price: number;
+  category?: "Haircut" | "Beard" | "Facial" | "Kids" | "Other";
+  popular?: boolean;
+  available?: boolean;
 }
 
 export interface AvailabilitySlot {
@@ -38,10 +43,16 @@ export interface BlockedDate {
   reason: string;
 }
 
+export interface BreakTime {
+  start: string;
+  end: string;
+}
+
 export interface VendorProfile {
   shopName: string;
   ownerName: string;
   address: string;
   phone: string;
   images: string[];
+  isOpen?: boolean;
 }

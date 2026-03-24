@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { loadVendorBookings, updateStoredBookingStatus } from "../trimo/marketplaceStorage";
+import { App } from "@capacitor/app";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import { Id } from "../../../convex/_generated/dataModel";
 import AvailabilityScreen from "./AvailabilityScreen";
 import BookingsScreen from "./BookingsScreen";
 import DashboardScreen from "./DashboardScreen";
@@ -15,6 +18,7 @@ import {
 import {
   AvailabilitySlot,
   BlockedDate,
+  BreakTime,
   VendorBooking,
   VendorProfile,
   VendorScreen,
@@ -32,6 +36,7 @@ import {
 
 interface Props {
   onExit: () => void;
+  onLogout: () => void;
   ownerRecord?: ShopOwnerRecord;
   onOwnerRecordChange?: (user: ShopOwnerRecord) => void;
 }
@@ -87,25 +92,73 @@ const createSlotsFromOwner = (ownerRecord?: ShopOwnerRecord): AvailabilitySlot[]
   return createDefaultAvailabilitySlots(ownerRecord.workingHours);
 };
 
-export default function VendorApp({ onExit, ownerRecord, onOwnerRecordChange }: Props) {
+export default function VendorApp({ onExit, onLogout, ownerRecord, onOwnerRecordChange }: Props) {
   const [screen, setScreen] = useState<VendorScreen>("dashboard");
-  const [bookings, setBookings] = useState<VendorBooking[]>([]);
   const [services, setServices] = useState<VendorService[]>(createServicesFromOwner(ownerRecord));
-  const [workingHours, setWorkingHours] = useState<WorkingHours>(
-    ownerRecord?.workingHours ?? fallbackWorkingHours
-  );
+  const [workingHours, setWorkingHours] = useState<WorkingHours>(ownerRecord?.workingHours ?? fallbackWorkingHours);
   const [slots, setSlots] = useState<AvailabilitySlot[]>(createSlotsFromOwner(ownerRecord));
+  const [slotDuration, setSlotDuration] = useState<number>(ownerRecord?.slotDuration ?? 30);
+  const [maxBookingsPerSlot, setMaxBookingsPerSlot] = useState<number>(ownerRecord?.maxBookingsPerSlot ?? 1);
+  const [breakTime, setBreakTime] = useState<BreakTime | null>(ownerRecord?.breakTime ?? null);
   const [blockedDates, setBlockedDates] = useState<BlockedDate[]>(ownerRecord?.blockedDates ?? []);
   const [profile, setProfile] = useState<VendorProfile>(createProfileFromOwner(ownerRecord));
 
+  const upsertShop = useMutation(api.shops.upsertShop);
+  const acceptBookingMutation = useMutation(api.bookings.acceptBooking);
+  const verifyBookingOtpMutation = useMutation(api.bookings.verifyBookingOtp);
+  const completeBookingMutation = useMutation(api.bookings.completeBooking);
+  const cancelBookingMutation = useMutation(api.bookings.cancelBooking);
+
+  // ── Live bookings from Convex ──────────────────────────────────────────────
+  const convexBookingsRaw = useQuery(
+    api.bookings.getShopBookingsByOwnerId,
+    ownerRecord ? { ownerId: ownerRecord.userId } : "skip"
+  );
+
+  // Map to VendorBooking type (convex already returns the right shape)
+  const bookings: VendorBooking[] = (convexBookingsRaw ?? []).map((b) => ({
+    id: b.id,
+    customerName: b.customerName,
+    service: b.service,
+    date: b.date,
+    time: b.time,
+    price: b.price,
+    status: b.status as VendorBooking["status"],
+    otp: b.otp,
+    otpVerified: b.otpVerified,
+  }));
+
+  // ── Sync owner record from props ─────────────────────────────────────────
   useEffect(() => {
     setProfile(createProfileFromOwner(ownerRecord));
     setServices(createServicesFromOwner(ownerRecord));
     setWorkingHours(ownerRecord?.workingHours ?? fallbackWorkingHours);
+    setSlotDuration(ownerRecord?.slotDuration ?? 30);
+    setMaxBookingsPerSlot(ownerRecord?.maxBookingsPerSlot ?? 1);
+    setBreakTime(ownerRecord?.breakTime ?? null);
     setSlots(createSlotsFromOwner(ownerRecord));
     setBlockedDates(ownerRecord?.blockedDates ?? []);
-    setBookings(ownerRecord ? loadVendorBookings(ownerRecord.userId) : []);
   }, [ownerRecord]);
+
+  useEffect(() => {
+    const handler = App.addListener("backButton", () => {
+      const backMap: Partial<Record<VendorScreen, VendorScreen>> = {
+        availability: "dashboard",
+        earnings: "dashboard",
+      };
+
+      const previous = backMap[screen];
+      if (previous) {
+        setScreen(previous);
+      } else if (["dashboard", "bookings", "services", "profile"].includes(screen)) {
+        App.exitApp();
+      }
+    });
+
+    return () => {
+      handler.then(h => h.remove());
+    };
+  }, [screen]);
 
   const mainTabs: VendorTab[] = ["dashboard", "bookings", "services", "profile"];
   const showBottomNav = mainTabs.includes(screen as VendorTab);
@@ -118,11 +171,46 @@ export default function VendorApp({ onExit, ownerRecord, onOwnerRecordChange }: 
   const earningsHistory = [...bookings]
     .filter((booking) => booking.status === "completed")
     .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime());
+  const totalEarnings = earningsHistory.reduce((sum, b) => sum + b.price, 0);
 
+  // ── Booking status update via Convex mutation ─────────────────────────────
+  
+  const handleAcceptBooking = async (id: string) => {
+    if (!ownerRecord) return;
+    try {
+      await acceptBookingMutation({ bookingId: id as Id<"bookings">, callerOwnerId: ownerRecord.userId });
+    } catch (err: any) { alert(err.message ?? "Failed to accept booking."); }
+  };
+
+  const handleVerifyOtp = async (id: string, otp: number) => {
+    if (!ownerRecord) return;
+    try {
+      await verifyBookingOtpMutation({ bookingId: id as Id<"bookings">, otp, callerOwnerId: ownerRecord.userId });
+    } catch (err: any) { alert(err.message ?? "Invalid OTP."); throw err; } // throw so UI can keep spinner or show error
+  };
+
+  const handleCompleteBooking = async (id: string) => {
+    if (!ownerRecord) return;
+    try {
+      await completeBookingMutation({ bookingId: id as Id<"bookings">, callerOwnerId: ownerRecord.userId });
+    } catch (err: any) { alert(err.message ?? "Failed to complete booking."); }
+  };
+
+  const handleCancelBooking = async (id: string) => {
+    if (!ownerRecord) return;
+    try {
+      await cancelBookingMutation({ bookingId: id as Id<"bookings">, callerOwnerId: ownerRecord.userId });
+    } catch (err: any) { alert(err.message ?? "Failed to cancel booking."); }
+  };
+
+  // ── Shop data sync to Convex ──────────────────────────────────────────────
   const syncOwnerRecord = (
     nextProfile: VendorProfile = profile,
     nextServices: VendorService[] = services,
     nextWorkingHours: WorkingHours = workingHours,
+    nextSlotDuration: number = slotDuration,
+    nextMaxBookingsPerSlot: number = maxBookingsPerSlot,
+    nextBreakTime: BreakTime | null = breakTime,
     nextSlots: AvailabilitySlot[] = slots,
     nextBlockedDates: BlockedDate[] = blockedDates
   ) => {
@@ -130,7 +218,7 @@ export default function VendorApp({ onExit, ownerRecord, onOwnerRecordChange }: 
       return;
     }
 
-    onOwnerRecordChange({
+    const updatedRecord: ShopOwnerRecord = {
       ...ownerRecord,
       name: nextProfile.ownerName,
       phone: nextProfile.phone,
@@ -143,25 +231,48 @@ export default function VendorApp({ onExit, ownerRecord, onOwnerRecordChange }: 
           ? Math.min(...nextServices.map((service) => service.price))
           : ownerRecord.startingPrice,
       workingHours: nextWorkingHours,
+      slotDuration: nextSlotDuration,
+      maxBookingsPerSlot: nextMaxBookingsPerSlot,
+      breakTime: nextBreakTime ?? undefined,
       availabilitySlots: nextSlots,
       blockedDates: nextBlockedDates,
       images: nextProfile.images,
       image: nextProfile.images[0] ?? ownerRecord.image,
-    });
-  };
+    };
 
-  const refreshBookings = () => {
-    if (!ownerRecord) {
-      setBookings([]);
-      return;
-    }
+    onOwnerRecordChange(updatedRecord);
 
-    setBookings(loadVendorBookings(ownerRecord.userId));
-  };
+    // Parse GPS coordinates from stored gpsLocation string
+    const gpsMatch = ownerRecord.gpsLocation?.match(
+      /Lat\s*(-?\d+(?:\.\d+)?),\s*Lng\s*(-?\d+(?:\.\d+)?)/i
+    );
+    const lat = gpsMatch ? Number(gpsMatch[1]) : 0;
+    const lng = gpsMatch ? Number(gpsMatch[2]) : 0;
+    const nextSlot = nextSlots.find((s) => s.enabled)?.time ?? "Not available";
 
-  const updateBookingStatus = (id: string, status: VendorBooking["status"]) => {
-    updateStoredBookingStatus(id, status);
-    refreshBookings();
+    // Sync to Convex so all customers see the latest shop data
+    upsertShop({
+      ownerId: ownerRecord.userId,
+      shopName: nextProfile.shopName,
+      address: nextProfile.address,
+      lat,
+      lng,
+      phone: nextProfile.phone,
+      image: nextProfile.images[0] ?? ownerRecord.image,
+      images: nextProfile.images,
+      servicesJson: JSON.stringify(nextServices),
+      startingPrice: updatedRecord.startingPrice,
+      openTime: nextWorkingHours.start,
+      closeTime: nextWorkingHours.end,
+      slotDuration: nextSlotDuration,
+      maxBookingsPerSlot: nextMaxBookingsPerSlot,
+      breakTime: nextBreakTime ?? undefined,
+      nextSlot,
+      gpsLocation: ownerRecord.gpsLocation,
+      locationLabel: ownerRecord.location,
+      availabilitySlotsJson: JSON.stringify(nextSlots),
+      blockedDatesJson: JSON.stringify(nextBlockedDates),
+    }).catch(console.error);
   };
 
   const createService = (service: Omit<VendorService, "id">) => {
@@ -173,7 +284,7 @@ export default function VendorApp({ onExit, ownerRecord, onOwnerRecordChange }: 
       },
     ];
     setServices(nextServices);
-    syncOwnerRecord(profile, nextServices, workingHours, slots, blockedDates);
+    syncOwnerRecord(profile, nextServices, workingHours, slotDuration, maxBookingsPerSlot, breakTime, slots, blockedDates);
   };
 
   const updateService = (id: string, nextService: Omit<VendorService, "id">) => {
@@ -181,35 +292,52 @@ export default function VendorApp({ onExit, ownerRecord, onOwnerRecordChange }: 
       service.id === id ? { ...service, ...nextService } : service
     );
     setServices(nextServices);
-    syncOwnerRecord(profile, nextServices, workingHours, slots, blockedDates);
+    syncOwnerRecord(profile, nextServices, workingHours, slotDuration, maxBookingsPerSlot, breakTime, slots, blockedDates);
   };
 
   const deleteService = (id: string) => {
     const nextServices = services.filter((service) => service.id !== id);
     setServices(nextServices);
-    syncOwnerRecord(profile, nextServices, workingHours, slots, blockedDates);
+    syncOwnerRecord(profile, nextServices, workingHours, slotDuration, maxBookingsPerSlot, breakTime, slots, blockedDates);
   };
 
   const toggleSlot = (id: string) => {
     const nextSlots = slots.map((slot) => (slot.id === id ? { ...slot, enabled: !slot.enabled } : slot));
     setSlots(nextSlots);
-    syncOwnerRecord(profile, services, workingHours, nextSlots, blockedDates);
+    syncOwnerRecord(profile, services, workingHours, slotDuration, maxBookingsPerSlot, breakTime, nextSlots, blockedDates);
+  };
+
+  const toggleAllSlots = (enabled: boolean) => {
+    const nextSlots = slots.map((slot) => ({ ...slot, enabled }));
+    setSlots(nextSlots);
+    syncOwnerRecord(profile, services, workingHours, slotDuration, maxBookingsPerSlot, breakTime, nextSlots, blockedDates);
   };
 
   const handleSaveProfile = (nextProfile: VendorProfile) => {
     setProfile(nextProfile);
-    syncOwnerRecord(nextProfile, services, workingHours, slots, blockedDates);
+    syncOwnerRecord(nextProfile, services, workingHours, slotDuration, maxBookingsPerSlot, breakTime, slots, blockedDates);
   };
 
-  const handleUpdateWorkingHours = (nextWorkingHours: WorkingHours) => {
-    const nextSlots = createDefaultAvailabilitySlots(nextWorkingHours).map((slot) => {
+  const handleUpdateAvailabilitySettings = (
+    nextWorkingHours: WorkingHours,
+    nextSlotDuration: number,
+    nextBreakTime: BreakTime | null
+  ) => {
+    const nextSlots = createDefaultAvailabilitySlots(nextWorkingHours, nextSlotDuration, nextBreakTime).map((slot) => {
       const existingSlot = slots.find((current) => current.time === slot.time);
       return existingSlot ? { ...slot, enabled: existingSlot.enabled } : slot;
     });
 
     setWorkingHours(nextWorkingHours);
+    setSlotDuration(nextSlotDuration);
+    setBreakTime(nextBreakTime);
     setSlots(nextSlots);
-    syncOwnerRecord(profile, services, nextWorkingHours, nextSlots, blockedDates);
+    syncOwnerRecord(profile, services, nextWorkingHours, nextSlotDuration, maxBookingsPerSlot, nextBreakTime, nextSlots, blockedDates);
+  };
+
+  const handleUpdateMaxBookings = (nextMaxBookingsPerSlot: number) => {
+    setMaxBookingsPerSlot(nextMaxBookingsPerSlot);
+    syncOwnerRecord(profile, services, workingHours, slotDuration, nextMaxBookingsPerSlot, breakTime, slots, blockedDates);
   };
 
   const addBlockedDate = (blockedDate: Omit<BlockedDate, "id">) => {
@@ -221,14 +349,17 @@ export default function VendorApp({ onExit, ownerRecord, onOwnerRecordChange }: 
       },
     ];
     setBlockedDates(nextBlockedDates);
-    syncOwnerRecord(profile, services, workingHours, slots, nextBlockedDates);
+    syncOwnerRecord(profile, services, workingHours, slotDuration, maxBookingsPerSlot, breakTime, slots, nextBlockedDates);
   };
 
   const removeBlockedDate = (id: string) => {
     const nextBlockedDates = blockedDates.filter((entry) => entry.id !== id);
     setBlockedDates(nextBlockedDates);
-    syncOwnerRecord(profile, services, workingHours, slots, nextBlockedDates);
+    syncOwnerRecord(profile, services, workingHours, slotDuration, maxBookingsPerSlot, breakTime, slots, nextBlockedDates);
   };
+
+  // Loading state while Convex bootstraps
+  const bookingsLoading = convexBookingsRaw === undefined && !!ownerRecord;
 
   return (
     <>
@@ -239,8 +370,12 @@ export default function VendorApp({ onExit, ownerRecord, onOwnerRecordChange }: 
           todayBookings={todayBookings}
           pendingCount={pendingCount}
           earningsToday={todayEarnings}
-          onAcceptBooking={(id) => updateBookingStatus(id, "confirmed")}
-          onRejectBooking={(id) => updateBookingStatus(id, "cancelled")}
+          bookingsLoading={bookingsLoading}
+          onAcceptBooking={handleAcceptBooking}
+          onRejectBooking={handleCancelBooking}
+          onStartBooking={handleVerifyOtp}
+          onCompleteBooking={handleCompleteBooking}
+          onCancelBooking={handleCancelBooking}
           onOpenAvailability={() => setScreen("availability")}
           onOpenEarnings={() => setScreen("earnings")}
           onOpenBookings={() => setScreen("bookings")}
@@ -250,9 +385,12 @@ export default function VendorApp({ onExit, ownerRecord, onOwnerRecordChange }: 
       {screen === "bookings" && (
         <BookingsScreen
           bookings={bookings}
-          onAcceptBooking={(id) => updateBookingStatus(id, "confirmed")}
-          onRejectBooking={(id) => updateBookingStatus(id, "cancelled")}
-          onCompleteBooking={(id) => updateBookingStatus(id, "completed")}
+          bookingsLoading={bookingsLoading}
+          onAcceptBooking={handleAcceptBooking}
+          onRejectBooking={handleCancelBooking}
+          onCompleteBooking={handleCompleteBooking}
+          onStartBooking={handleVerifyOtp}
+          onCancelBooking={handleCancelBooking}
         />
       )}
 
@@ -267,17 +405,22 @@ export default function VendorApp({ onExit, ownerRecord, onOwnerRecordChange }: 
       )}
 
       {screen === "profile" && (
-        <ProfileScreen profile={profile} onSaveProfile={handleSaveProfile} onExit={onExit} />
+        <ProfileScreen ownerId={ownerRecord?.userId ?? ""} profile={profile} onSaveProfile={handleSaveProfile} onExit={onExit} onLogout={onLogout} />
       )}
 
       {screen === "availability" && (
         <AvailabilityScreen
           slots={slots}
           workingHours={workingHours}
+          slotDuration={slotDuration}
+          maxBookingsPerSlot={maxBookingsPerSlot}
+          breakTime={breakTime}
           blockedDates={blockedDates}
           onBack={() => setScreen("dashboard")}
           onToggleSlot={toggleSlot}
-          onUpdateWorkingHours={handleUpdateWorkingHours}
+          onToggleAllSlots={toggleAllSlots}
+          onUpdateSettings={handleUpdateAvailabilitySettings}
+          onUpdateMaxBookings={handleUpdateMaxBookings}
           onAddBlockedDate={addBlockedDate}
           onRemoveBlockedDate={removeBlockedDate}
         />
@@ -288,6 +431,7 @@ export default function VendorApp({ onExit, ownerRecord, onOwnerRecordChange }: 
           todayEarnings={todayEarnings}
           weeklyEarnings={weeklyEarnings}
           monthlyEarnings={monthlyEarnings}
+          totalEarnings={totalEarnings}
           history={earningsHistory}
           onBack={() => setScreen("dashboard")}
         />
