@@ -23,15 +23,18 @@ import { api } from "../../../convex/_generated/api";
 
 // ─── Shared UI Helpers ─────────────────────────────────────────────────────
 
-function ScreenHeader({ title, subtitle, onBack }: { title: string; subtitle?: string; onBack: () => void }) {
+function ScreenHeader({ title, subtitle, onBack, action }: { title: string; subtitle?: string; onBack: () => void; action?: React.ReactNode }) {
   return (
     <div className="shrink-0 customer-header px-4 pb-6 pt-4 safe-top">
-      <button
-        onClick={onBack}
-        className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/20 scale-tap"
-      >
-        <ArrowLeft className="h-5 w-5 text-white" />
-      </button>
+      <div className="flex items-center justify-between mb-4">
+        <button
+          onClick={onBack}
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 scale-tap"
+        >
+          <ArrowLeft className="h-5 w-5 text-white" />
+        </button>
+        {action}
+      </div>
       <h1 className="text-2xl font-bold text-white animate-fade-slide-up">{title}</h1>
       {subtitle && <p className="mt-1 text-sm text-white/70 animate-fade-in-delayed">{subtitle}</p>}
     </div>
@@ -238,12 +241,34 @@ export function PersonalInfoScreen({ userId, onBack }: { userId: string; onBack:
 export function NotificationsScreen({ userId, onBack }: { userId: string; onBack: () => void }) {
   const notifications = useQuery(api.profile.getUserNotifications, { userId });
   const seed = useMutation(api.profile.seedNotifications);
+  const clearAll = useMutation(api.profile.clearUserNotifications);
+  const deleteNotification = useMutation(api.profile.deleteNotification);
   
   useEffect(() => { seed({ userId }); }, [userId, seed]);
 
+  const handleClearAll = async () => {
+    if (confirm("Are you sure you want to clear all notifications?")) {
+      await clearAll({ userId });
+    }
+  };
+
+  const handleDelete = async (id: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    await deleteNotification({ notificationId: id });
+  };
+
+  const actionButton = notifications && notifications.length > 0 ? (
+    <button
+      onClick={handleClearAll}
+      className="rounded-full bg-white/20 px-3 py-1.5 text-xs font-bold text-white scale-tap hover:bg-white/30 transition-colors"
+    >
+      Clear All
+    </button>
+  ) : null;
+
   return (
     <div className="flex h-[100dvh] flex-col bg-muted">
-      <ScreenHeader title="Notifications" subtitle="Updates and alerts" onBack={onBack} />
+      <ScreenHeader title="Notifications" subtitle="Updates and alerts" onBack={onBack} action={actionButton} />
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-20">
         {notifications === undefined ? (
           <div className="py-20 text-center animate-pulse">Loading...</div>
@@ -255,19 +280,25 @@ export function NotificationsScreen({ userId, onBack }: { userId: string; onBack
         ) : (
           <div className="flex flex-col gap-3">
             {notifications.map((n) => (
-              <div key={n._id} className={`flex gap-3 rounded-[18px] p-4 card-shadow ${n.isRead ? "bg-card" : "bg-primary/5"}`}>
+              <div key={n._id} className={`flex gap-3 rounded-[18px] p-4 card-shadow relative ${n.isRead ? "bg-card" : "bg-primary/5"}`}>
                 <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${n.isRead ? "bg-muted text-muted-foreground" : "bg-primary text-white"}`}>
                   <Bell className="h-5 w-5" />
                 </div>
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 pr-6">
                   <div className="flex items-start justify-between gap-2">
-                    <h3 className={`text-sm font-bold ${n.isRead ? "text-foreground" : "text-primary"}`}>{n.title}</h3>
-                    <span className="shrink-0 text-[10px] font-semibold text-muted-foreground">
+                    <h3 className={`text-sm font-bold truncate ${n.isRead ? "text-foreground" : "text-primary"}`}>{n.title}</h3>
+                    <span className="shrink-0 text-[10px] font-semibold text-muted-foreground mt-0.5">
                       {formatDistanceToNow(n.createdAt, { addSuffix: true })}
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{n.message}</p>
                 </div>
+                <button
+                  onClick={(e) => handleDelete(n._id, e)}
+                  className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-muted text-muted-foreground scale-tap hover:bg-muted/80 transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
               </div>
             ))}
           </div>

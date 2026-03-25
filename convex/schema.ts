@@ -4,23 +4,15 @@ import { v } from "convex/values";
 export default defineSchema({
   users: defineTable({
     uid: v.string(), // Firebase UID
+    firebaseUid: v.optional(v.string()), // Standardized field name
     name: v.string(),
     email: v.string(),
-    location: v.optional(v.string()),
-    phone: v.optional(v.string()),
-    role: v.optional(v.union(v.literal("customer"), v.literal("shop_owner"))),
-  }).index("by_uid", ["uid"]),
-
-  // Customer profiles linked to Firebase Auth UID
-  customers: defineTable({
-    firebaseUid: v.string(),      // Firebase Auth uid (stable across sessions)
-    email: v.string(),
-    name: v.string(),
-    phone: v.string(),
     location: v.optional(v.string()),
     gpsLocation: v.optional(v.string()),
-    createdAt: v.string(),
-  }).index("by_firebase_uid", ["firebaseUid"]),
+    phone: v.optional(v.string()),
+    role: v.optional(v.union(v.literal("customer"), v.literal("shop_owner"))),
+    createdAt: v.optional(v.string()),
+  }).index("by_uid", ["uid"]).index("by_firebase_uid", ["firebaseUid"]),
 
   shops: defineTable({
     ownerId: v.string(), // local userId from localStorage (e.g. "owner-1234")
@@ -34,11 +26,9 @@ export default defineSchema({
     totalReviews: v.number(),
     isActive: v.boolean(),
     isOpen: v.optional(v.boolean()), // Owner-controlled: accepts bookings right now?
-    // Extended fields for customer listing
     phone: v.optional(v.string()),
     image: v.optional(v.string()),
     images: v.optional(v.array(v.string())),
-    servicesJson: v.optional(v.string()), // JSON stringified VendorService[]
     startingPrice: v.optional(v.number()),
     openTime: v.optional(v.string()),
     closeTime: v.optional(v.string()),
@@ -51,20 +41,24 @@ export default defineSchema({
     nextSlot: v.optional(v.string()),
     gpsLocation: v.optional(v.string()),
     locationLabel: v.optional(v.string()),
-    availabilitySlotsJson: v.optional(v.string()), // JSON stringified slots
-    blockedDatesJson: v.optional(v.string()), // JSON stringified blocked dates
-    // Owner credentials
+    status: v.optional(v.union(v.literal("pending"), v.literal("approved"), v.literal("rejected"))),
+    firebaseUid: v.optional(v.string()), // Firebase Auth linking
+    // Credentials-based login fields (shop owner username/password setup)
     username: v.optional(v.string()),
     password: v.optional(v.string()),
-    status: v.optional(v.union(v.literal("pending"), v.literal("approved"), v.literal("rejected"))),
-  }).index("by_owner", ["ownerId"]).index("by_username", ["username"]).index("by_phone", ["phone"]),
+    // Legacy JSON blob fields — kept optional so old documents remain valid.
+    // New writes use relational tables (services, blockedDates) instead.
+    servicesJson: v.optional(v.string()),
+    availabilitySlotsJson: v.optional(v.string()),
+    blockedDatesJson: v.optional(v.string()),
+  }).index("by_owner", ["ownerId"]).index("by_phone", ["phone"]).index("by_firebase_uid", ["firebaseUid"]),
 
   services: defineTable({
     shopId: v.id("shops"),
     name: v.string(),
     price: v.number(),
     duration: v.number(),
-  }),
+  }).index("by_shopId", ["shopId"]),
 
   savedShops: defineTable({
     userId: v.string(),
@@ -89,7 +83,7 @@ export default defineSchema({
   }).index("by_user", ["userId"]),
 
   bookings: defineTable({
-    customerId: v.string(), // Local customer ID string
+    customerId: v.string(), // Local customer ID string (Firebase UID)
     shopId: v.id("shops"),
     customerName: v.string(),
     customerPhone: v.optional(v.string()),
@@ -117,7 +111,7 @@ export default defineSchema({
 
   reviews: defineTable({
     userId: v.optional(v.id("users")),
-    customerId: v.optional(v.string()), // Local customer ID string
+    customerId: v.optional(v.string()), // Firebase UID
     customerName: v.optional(v.string()),
     shopId: v.id("shops"),
     rating: v.number(),
@@ -126,13 +120,12 @@ export default defineSchema({
     createdAt: v.optional(v.number()),
   }),
 
-  // Table to prevent double bookings logic efficiently
   slotBookings: defineTable({
     shopId: v.id("shops"),
     date: v.string(), // "YYYY-MM-DD"
     time: v.string(), // e.g. "09:00 AM"
     bookedCount: v.number(),
-    maxCount: v.number(),
+    maxCount: v.optional(v.number()),
   }).index("by_shop_date_time", ["shopId", "date", "time"]),
 
   blockedDates: defineTable({
@@ -147,20 +140,10 @@ export default defineSchema({
     expiresAt: v.number(), // timestamp
   }).index("by_phone", ["phone"]),
 
-  // Rate limiting: tracks failed login attempts per username
-  loginAttempts: defineTable({
-    username: v.string(),
-    failedCount: v.number(),
-    lockedUntil: v.optional(v.number()),
-    lastAttemptAt: v.number(),
-  }).index("by_username", ["username"]),
-
-  // Immutable security audit trail — never deleted
-  securityLogs: defineTable({
-    event: v.string(),    // e.g. "login_success", "login_failure", "login_locked"
-    username: v.string(), // sanitized username (no password data)
-    outcome: v.union(v.literal("success"), v.literal("failure"), v.literal("blocked")),
-    detail: v.optional(v.string()), // extra info e.g. "Wrong password" or "Locked 300s"
-    timestamp: v.number(),  // Date.now()
-  }).index("by_timestamp", ["timestamp"]).index("by_username", ["username"]),
+  rateLimits: defineTable({
+    userId: v.string(),
+    endpoint: v.string(),
+    count: v.number(),
+    windowStart: v.number(),
+  }).index("by_user_endpoint", ["userId", "endpoint"]),
 });

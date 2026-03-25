@@ -33,6 +33,7 @@ import {
   getWeeklyEarnings,
   isBookingToday,
 } from "./utils";
+import { formatError } from "../../lib/errorUtils";
 
 interface Props {
   onExit: () => void;
@@ -178,29 +179,29 @@ export default function VendorApp({ onExit, onLogout, ownerRecord, onOwnerRecord
   const handleAcceptBooking = async (id: string) => {
     if (!ownerRecord) return;
     try {
-      await acceptBookingMutation({ bookingId: id as Id<"bookings">, callerOwnerId: ownerRecord.userId });
-    } catch (err: any) { alert(err.message ?? "Failed to accept booking."); }
+      await acceptBookingMutation({ bookingId: id as Id<"bookings">, callerOwnerId: ownerRecord.firebaseUid || ownerRecord.userId });
+    } catch (err: any) { alert(formatError(err)); }
   };
 
   const handleVerifyOtp = async (id: string, otp: number) => {
     if (!ownerRecord) return;
     try {
-      await verifyBookingOtpMutation({ bookingId: id as Id<"bookings">, otp, callerOwnerId: ownerRecord.userId });
-    } catch (err: any) { alert(err.message ?? "Invalid OTP."); throw err; } // throw so UI can keep spinner or show error
+      await verifyBookingOtpMutation({ bookingId: id as Id<"bookings">, otp, callerOwnerId: ownerRecord.firebaseUid || ownerRecord.userId });
+    } catch (err: any) { alert(formatError(err)); throw err; } // throw so UI can keep spinner or show error
   };
 
   const handleCompleteBooking = async (id: string) => {
     if (!ownerRecord) return;
     try {
-      await completeBookingMutation({ bookingId: id as Id<"bookings">, callerOwnerId: ownerRecord.userId });
-    } catch (err: any) { alert(err.message ?? "Failed to complete booking."); }
+      await completeBookingMutation({ bookingId: id as Id<"bookings">, callerOwnerId: ownerRecord.firebaseUid || ownerRecord.userId });
+    } catch (err: any) { alert(formatError(err)); }
   };
 
   const handleCancelBooking = async (id: string) => {
     if (!ownerRecord) return;
     try {
-      await cancelBookingMutation({ bookingId: id as Id<"bookings">, callerOwnerId: ownerRecord.userId });
-    } catch (err: any) { alert(err.message ?? "Failed to cancel booking."); }
+      await cancelBookingMutation({ bookingId: id as Id<"bookings">, callerOwnerId: ownerRecord.firebaseUid || ownerRecord.userId });
+    } catch (err: any) { alert(formatError(err)); }
   };
 
   // ── Shop data sync to Convex ──────────────────────────────────────────────
@@ -250,7 +251,7 @@ export default function VendorApp({ onExit, onLogout, ownerRecord, onOwnerRecord
     const lng = gpsMatch ? Number(gpsMatch[2]) : 0;
     const nextSlot = nextSlots.find((s) => s.enabled)?.time ?? "Not available";
 
-    // Sync to Convex so all customers see the latest shop data
+    // Sync to Convex using relational fields (purified)
     upsertShop({
       ownerId: ownerRecord.userId,
       shopName: nextProfile.shopName,
@@ -260,7 +261,6 @@ export default function VendorApp({ onExit, onLogout, ownerRecord, onOwnerRecord
       phone: nextProfile.phone,
       image: nextProfile.images[0] ?? ownerRecord.image,
       images: nextProfile.images,
-      servicesJson: JSON.stringify(nextServices),
       startingPrice: updatedRecord.startingPrice,
       openTime: nextWorkingHours.start,
       closeTime: nextWorkingHours.end,
@@ -270,8 +270,16 @@ export default function VendorApp({ onExit, onLogout, ownerRecord, onOwnerRecord
       nextSlot,
       gpsLocation: ownerRecord.gpsLocation,
       locationLabel: ownerRecord.location,
-      availabilitySlotsJson: JSON.stringify(nextSlots),
-      blockedDatesJson: JSON.stringify(nextBlockedDates),
+      firebaseUid: ownerRecord.firebaseUid,
+      services: nextServices.map(s => ({
+        name: s.name,
+        price: Number(s.price),
+        duration: Number(s.durationMinutes)
+      })),
+      blockedDates: nextBlockedDates.map(b => ({
+        date: b.date,
+        reason: b.reason
+      })),
     }).catch(console.error);
   };
 

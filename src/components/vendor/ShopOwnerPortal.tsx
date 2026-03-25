@@ -19,7 +19,13 @@ export default function ShopOwnerPortal({ onBackToCustomer }: Props) {
     setActiveOwner(user);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      const { auth } = await import("../../lib/firebase");
+      await auth.signOut();
+    } catch (e) {
+      console.warn("Vendor signOut error:", e);
+    }
     clearShopOwnerSession();
     setActiveOwner(null);
   };

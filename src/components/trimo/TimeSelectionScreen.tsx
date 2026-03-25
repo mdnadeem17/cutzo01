@@ -224,6 +224,14 @@ export default function TimeSelectionScreen({
 
   // ── Wheel state
   const [dateIdx, setDateIdx] = useState(0);
+  const selectedDate = dateOptions[dateIdx]?.value ?? dateOptions[0].value;
+
+  // ── Convex available slots (reactive source of truth)
+  const availableSlots = useQuery(
+    api.shops.getAvailableSlots,
+    { shopId: shopId as Id<"shops">, date: selectedDate }
+  );
+
   const [selectedHour, setSelectedHour] = useState(9);
   const [selectedMinuteTick, setSelectedMinuteTick] = useState(0);
   const [ampm, setAmpm] = useState<"AM" | "PM">("AM");
@@ -236,20 +244,17 @@ export default function TimeSelectionScreen({
     return ticks;
   }, [slotDuration]);
 
-  const selectedDate = dateOptions[dateIdx]?.value ?? dateOptions[0].value;
   const selectedDateLabel = dateOptions[dateIdx]?.label ?? "Today";
   const selectedMinute = minuteTicks[selectedMinuteTick] ?? 0;
   const time24 = to24h(selectedHour, selectedMinute, ampm);
 
-  // ── Live time filter for "Today"
-  const nowH24 = useMemo(() => {
-    const n = new Date();
-    return n.getHours() * 60 + n.getMinutes();
-  }, []);
+  // ── Find matching slot from backend ─────────────────────────────────────
+  const currentSlot = availableSlots?.find(s => s.time === time24);
 
-  // Build available hour list
-  const openParsed = parseTime(availability?.openTime ?? "09:00");
-  const closeParsed = parseTime(availability?.closeTime ?? "21:00");
+  const isSlotValid = currentSlot?.available === true;
+
+  // ── Display label for selected time
+  const formattedTime = `${String(selectedHour).padStart(2, "0")}:${String(selectedMinute).padStart(2, "0")} ${ampm}`;
 
   const hourList = useMemo(() => {
     const hours: number[] = [];
@@ -257,49 +262,32 @@ export default function TimeSelectionScreen({
     return hours;
   }, []);
 
-  // ── Convex slot check (reactive)
-  const slotAvail = useQuery(
-    api.shops.checkSlotAvailable,
-    { shopId: shopId as Id<"shops">, date: selectedDate, time: time24 }
-  );
-
-  // ── Determine if selected time is in the past (for Today)
-  const isPastTime = useMemo(() => {
-    if (dateIdx !== 0) return false;
-    let h = selectedHour;
-    if (ampm === "AM" && selectedHour === 12) h = 0;
-    if (ampm === "PM" && selectedHour !== 12) h += 12;
-    return h * 60 + selectedMinute <= nowH24;
-  }, [dateIdx, selectedHour, selectedMinute, ampm, nowH24]);
-
-  // Is within shop hours?
-  const isWithinHours = useMemo(() => {
-    const tMin = (() => {
-      let h = selectedHour;
-      if (ampm === "AM" && h === 12) h = 0;
-      if (ampm === "PM" && h !== 12) h += 12;
-      return h * 60 + selectedMinute;
-    })();
-    const openMin = openParsed.h24 * 60 + openParsed.min;
-    const closeMin = closeParsed.h24 * 60 + closeParsed.min;
-    return tMin >= openMin && tMin < closeMin;
-  }, [selectedHour, selectedMinute, ampm, openParsed, closeParsed]);
-
-  const isSlotValid =
-    !isPastTime &&
-    isWithinHours &&
-    slotAvail?.available === true;
-
-  // ── Display label for selected time
-  const formattedTime = `${String(selectedHour).padStart(2, "0")}:${String(selectedMinute).padStart(2, "0")} ${ampm}`;
-
   const statusMessage = (() => {
-    if (isPastTime) return "This time has already passed.";
-    if (!isWithinHours) return `Shop opens ${availability?.openTime ?? "09:00"} – ${availability?.closeTime ?? "21:00"}.`;
-    if (slotAvail === undefined) return "Checking availability…";
-    if (!slotAvail.available) return slotAvail.reason ?? "Slot not available.";
+    if (availableSlots === undefined) return "Checking availability…";
+    if (!currentSlot) {
+      // Logic for why it doesn't exist (past, closed, etc.)
+      const n = new Date();
+      const nowMins = n.getHours() * 60 + n.getMinutes();
+      const selMins = (() => {
+        let h = selectedHour;
+        if (ampm === "AM" && h === 12) h = 0;
+        if (ampm === "PM" && h !== 12) h += 12;
+        return h * 60 + selectedMinute;
+      })();
+
+      if (dateIdx === 0 && selMins <= nowMins) return "This time has already passed.";
+      return `Shop is closed or on break at this time.`;
+    }
+    if (!currentSlot.available) {
+      if (currentSlot.status === "booked") return "Slot is fully booked.";
+      if (currentSlot.status === "past") return "This time has already passed.";
+      if (currentSlot.status === "break") return "Shop is on break.";
+      return "Slot not available.";
+    }
     return null;
   })();
+
+  const isActuallyPast = currentSlot?.status === "past" || (dateIdx === 0 && !currentSlot && statusMessage?.includes("passed"));
 
   return (
     <div className="flex flex-col bg-muted" style={{ height: "100dvh" }}>
@@ -402,8 +390,8 @@ export default function TimeSelectionScreen({
           <div
             className="rounded-[14px] px-4 py-3 text-sm font-semibold text-center slide-up"
             style={{
-              background: isPastTime ? "rgba(239,68,68,0.08)" : "rgba(143,0,255,0.07)",
-              color: isPastTime ? "#ef4444" : "#8F00FF",
+              background: isActuallyPast ? "rgba(239,68,68,0.08)" : "rgba(143,0,255,0.07)",
+              color: isActuallyPast ? "#ef4444" : "#8F00FF",
             }}
           >
             {statusMessage}

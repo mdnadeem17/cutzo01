@@ -24,7 +24,7 @@ import { useMutation, useQuery } from "convex/react";
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { Capacitor } from '@capacitor/core';
 import { auth } from "../../lib/firebase";
-import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { signInWithPopup, GoogleAuthProvider, signInWithCredential } from "firebase/auth";
 import { useLoading } from "./LoadingContext";
 import { api } from "../../../convex/_generated/api";
 import {
@@ -34,6 +34,7 @@ import {
   setCustomerSession,
 } from "./authStorage";
 import { CustomerRecord } from "./types";
+import { formatError } from "../../lib/errorUtils";
 
 
 interface Props {
@@ -72,18 +73,12 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
   const [firebaseUid, setFirebaseUid] = useState<string | null>(null);
   const { showLoading, hideLoading } = useLoading();
 
-  const createUser = useMutation(api.users.createUser);
-  const upsertCustomer = useMutation(api.customers.upsertCustomer);
+  const upsertUser = useMutation(api.users.upsertUser);
 
   // Check returning user in Convex after sign-in
   const existingUser = useQuery(
-    api.users.getUserById,
+    api.users.getUserByUid,
     firebaseUid ? { uid: firebaseUid } : "skip"
-  );
-
-  const existingCustomer = useQuery(
-    api.customers.getCustomerByFirebaseUid,
-    firebaseUid ? { firebaseUid: firebaseUid } : "skip"
   );
 
   // Syncing with Convex logic removed Clerk dependency
@@ -91,36 +86,18 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
   useEffect(() => {
     if (!firebaseUid) return;
     if (existingUser === undefined) return; // still loading
-    if (existingCustomer === undefined) return; // still loading
 
     const email = setupDraft.email || "";
     const name = setupDraft.name || "";
 
     if (existingUser) {
-      const mergedPhone = existingUser.phone || existingCustomer?.phone || "";
-      const mergedLocation = existingUser.location || existingCustomer?.location || "Location pending";
-
       const userRecord: CustomerRecord = {
         userId: existingUser.uid,
         role: "customer",
-        name: existingUser.name || existingCustomer?.name || name,
-        phone: mergedPhone,
-        location: mergedLocation,
-        createdAt: new Date().toISOString(),
-        authProvider: "google",
-      };
-      saveCustomer(userRecord);
-      setCustomerSession(userRecord.userId);
-      hideLoading();
-      onAuthenticated(userRecord);
-    } else if (existingCustomer) {
-      const userRecord: CustomerRecord = {
-        userId: existingCustomer.firebaseUid,
-        role: "customer",
-        name: existingCustomer.name || name,
-        phone: existingCustomer.phone || "",
-        location: existingCustomer.location || "Location pending",
-        createdAt: new Date().toISOString(),
+        name: existingUser.name || name,
+        phone: existingUser.phone || "",
+        location: existingUser.location || "Location pending",
+        createdAt: existingUser.createdAt || new Date().toISOString(),
         authProvider: "google",
       };
       saveCustomer(userRecord);
@@ -139,7 +116,7 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
       hideLoading();
     }
     setIsLoggingIn(false);
-  }, [firebaseUid, existingUser, existingCustomer]);
+  }, [firebaseUid, existingUser]);
 
   const resetFlow = () => {
     setStep("access");
@@ -179,8 +156,9 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
         const result = await FirebaseAuthentication.signInWithGoogle();
         if (result.user) {
           const user = result.user;
-          console.log("Firebase Native Google Sign-In success:", user);
           
+
+
           setFirebaseUid(user.uid);
           setSetupDraft((current) => ({
             ...current,
@@ -195,7 +173,7 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
         }
       } catch (error: any) {
         console.error("Firebase Native Google Sign-In error:", error);
-        setErrorMessage(error?.message || "Native Google Sign-In failed.");
+        setErrorMessage(formatError(error));
         setIsLoggingIn(false);
         hideLoading();
       }
@@ -217,7 +195,7 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
       }
     } catch (error: any) {
       console.error("Firebase Web Google Sign-In error:", error);
-      setErrorMessage(error?.message || "Google Sign-In failed.");
+      setErrorMessage(formatError(error));
       setIsLoggingIn(false);
       hideLoading();
     } finally {
@@ -271,23 +249,15 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
       const name = setupDraft.name.trim();
       const location = setupDraft.location.trim() || "Location pending";
 
-      // Write to primary 'users' table
-      await createUser({
+      // Unified user profile update
+      await upsertUser({
         uid,
         name,
-        location,
         email: setupDraft.email,
-        phone: normalizedPhone,
-      });
-
-      // Mirror to 'customers' table to keep both in sync
-      await upsertCustomer({
-        firebaseUid: uid,
-        email: setupDraft.email,
-        name,
         phone: normalizedPhone,
         location,
         gpsLocation: setupDraft.gpsLocation || undefined,
+        role: "customer",
       });
 
       const nextUser: CustomerRecord = {
@@ -307,7 +277,7 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
       onAuthenticated(nextUser);
     } catch (error: any) {
       console.error("Setup failed:", error);
-      setErrorMessage(error.message || "An error occurred during setup.");
+      setErrorMessage(formatError(error));
       hideLoading();
     }
   };

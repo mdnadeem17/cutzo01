@@ -25,7 +25,6 @@ import { App } from "@capacitor/app";
 import useEmblaCarousel from "embla-carousel-react";
 import { useLoading } from "./LoadingContext";
 import { api } from "../../../convex/_generated/api";
-import { CATEGORIES } from "./data";
 import { CustomerRecord, Screen, Shop } from "./types";
 
 interface Props {
@@ -379,9 +378,8 @@ export default function HomeScreen({ onShopSelect, onNavigate, onLogout, custome
 
   // Map Convex shop records to the local Shop type
   const shops: Shop[] = convexShops.map((s) => {
-    const services = s.servicesJson ? (() => { try { return JSON.parse(s.servicesJson); } catch { return []; } })() : [];
-    const availabilitySlots = s.availabilitySlotsJson ? (() => { try { return JSON.parse(s.availabilitySlotsJson); } catch { return []; } })() : [];
-    const blockedDates = s.blockedDatesJson ? (() => { try { return JSON.parse(s.blockedDatesJson); } catch { return []; } })() : [];
+    // `s.services` is a relational array from the Convex join (getShops already fetches them)
+    const relationalServices = s.services ?? [];
     return {
       id: s._id as string,
       ownerId: s.ownerId,
@@ -406,21 +404,19 @@ export default function HomeScreen({ onShopSelect, onNavigate, onLogout, custome
       slotDuration: s.slotDuration,
       maxBookingsPerSlot: s.maxBookingsPerSlot,
       breakTime: s.breakTime,
-      services: services.map((svc: any, idx: number) => ({
-        id: svc.id ?? `svc-${idx}`,
+      services: relationalServices.map((svc, idx) => ({
+        id: svc._id as string,
         name: svc.name ?? "",
         icon: "Scissors",
-        duration: `${svc.durationMinutes ?? 30} min`,
+        duration: `${svc.duration ?? 30} min`,
         price: svc.price ?? 0,
         popular: idx === 0,
       })),
-      availabilitySlots: availabilitySlots.map((slot: any) => ({
-        time: slot.time,
-        available: slot.enabled ?? true,
-      })),
-      blockedDates: blockedDates.map((entry: any) => entry.date ?? entry),
+      availabilitySlots: [],
+      blockedDates: [],
     };
   });
+
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : "Good Evening";

@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import TrimoHeader from "./TrimoHeader";
 import { VendorProfile } from "./types";
+import { formatError } from "../../lib/errorUtils";
 
 interface Props {
   ownerId: string;
@@ -107,7 +108,7 @@ export default function ProfileScreen({ ownerId, profile, onSaveProfile, onLogou
         });
       }
     } catch (error: any) {
-      alert(`Failed to upload image: ${error.message}`);
+      alert(formatError(error));
     } finally {
       setIsUploading(false);
     }
@@ -132,7 +133,7 @@ export default function ProfileScreen({ ownerId, profile, onSaveProfile, onLogou
       setIsTogglingStatus(true);
       await toggleShopStatusMutation({ ownerId });
     } catch (error: any) {
-      alert("Failed to update shop status: " + error.message);
+      alert(formatError(error));
     } finally {
       setIsTogglingStatus(false);
     }

@@ -10,12 +10,12 @@ function GoogleIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-import { ChangeEvent, useState } from "react";
+import { ChangeEvent, useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { Capacitor } from '@capacitor/core';
 import { auth } from "../../lib/firebase";
-import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { signInWithPopup, GoogleAuthProvider, signInWithCredential } from "firebase/auth";
 import { api } from "../../../convex/_generated/api";
 import { Geolocation } from '@capacitor/geolocation';
 import { compressImage, formatHourLabel, hashPassword } from "./utils";
@@ -29,6 +29,7 @@ import {
   setShopOwnerSession,
   ShopOwnerRecord,
 } from "./storage";
+import { formatError } from "../../lib/errorUtils";
 
 interface Props {
   onBack: () => void;
@@ -108,11 +109,72 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
+  const [firebaseUid, setFirebaseUid] = useState<string | null>(null);
   const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
-
+  
   const upsertShop = useMutation(api.shops.upsertShop);
   const loginMutation = useMutation(api.shops.loginShopOwner);
+
+  // Check returning shop in Convex after sign-in
+  const existingShop = useQuery(
+    api.shops.getShopByFirebaseUid,
+    firebaseUid ? { firebaseUid: firebaseUid } : "skip"
+  );
+
+  useEffect(() => {
+    if (!firebaseUid) return;
+    if (existingShop === undefined) return; // still loading
+
+    if (existingShop) {
+      if (existingShop.status === "pending") {
+        setErrorMessage("Your account is currently under review. We will notify you once approved.");
+        setStep("access");
+        setFirebaseUid(null); // Reset to allow retrying/other actions
+        setIsLoggingIn(false);
+        return;
+      }
+
+      if (existingShop.status === "rejected") {
+        setErrorMessage("Your account has been rejected. Please contact support.");
+        setStep("access");
+        setFirebaseUid(null);
+        setIsLoggingIn(false);
+        return;
+      }
+
+      const record: ShopOwnerRecord = {
+        userId: existingShop.ownerId,
+        role: "shop_owner",
+        name: existingShop.shopName,
+        phone: existingShop.phone || "",
+        shopName: existingShop.shopName,
+        location: existingShop.locationLabel || existingShop.address,
+        address: existingShop.address,
+        services: [],
+        serviceCatalog: existingShop.servicesJson ? JSON.parse(existingShop.servicesJson) : [],
+        startingPrice: existingShop.startingPrice || 0,
+        workingHours: { start: existingShop.openTime ?? "09:00", end: existingShop.closeTime ?? "21:00" },
+        slotDuration: existingShop.slotDuration || 30,
+        maxBookingsPerSlot: existingShop.maxBookingsPerSlot || 1,
+        availabilitySlots: existingShop.availabilitySlotsJson ? JSON.parse(existingShop.availabilitySlotsJson) : [],
+        blockedDates: existingShop.blockedDatesJson ? JSON.parse(existingShop.blockedDatesJson) : [],
+        image: existingShop.image || "",
+        images: existingShop.images || [],
+        gpsLocation: existingShop.gpsLocation,
+        createdAt: new Date().toISOString(),
+        authProvider: "google",
+        firebaseUid: firebaseUid || undefined,
+      };
+      saveShopOwner(record);
+      setShopOwnerSession(record.userId);
+      onAuthenticated(record);
+    } else {
+      // New shop — show setup form
+      setStep("setup");
+    }
+    setIsLoggingIn(false);
+  }, [firebaseUid, existingShop]);
 
   const handleStepBack = () => {
     if (step === "access") {
@@ -133,16 +195,20 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
         const result = await FirebaseAuthentication.signInWithGoogle();
         if (result.user) {
           const user = result.user;
+          
+
+
+          setFirebaseUid(user.uid);
           setSetupDraft(createDraft({ 
             authProvider: "google",
             ownerName: user.displayName || "",
             email: user.email || ""
           }));
-          setStep("setup");
+          // useEffect will handle navigation if existingShop is found
         }
       } catch (error: any) {
         console.error("Firebase Native Google Login failed:", error);
-        setErrorMessage(error?.message || "Failed to sign in with Google.");
+        setErrorMessage(formatError(error));
       } finally {
         setIsLoggingIn(false);
       }
@@ -154,16 +220,17 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
       const result = await signInWithPopup(auth, provider);
       if (result.user) {
         const user = result.user;
+        setFirebaseUid(user.uid);
         setSetupDraft(createDraft({ 
           authProvider: "google",
           ownerName: user.displayName || "",
           email: user.email || ""
         }));
-        setStep("setup");
+        // useEffect will handle navigation if existingShop is found
       }
     } catch (error: any) {
       console.error("Firebase Web Google Login failed:", error);
-      setErrorMessage(error?.message || "Failed to sign in with Google.");
+      setErrorMessage(formatError(error));
     } finally {
       setIsLoggingIn(false);
     }
@@ -213,13 +280,14 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
         gpsLocation: safeShop.gpsLocation,
         createdAt: new Date().toISOString(),
         authProvider: "google",
+        firebaseUid: firebaseUid || undefined,
       };
       saveShopOwner(record);
       setShopOwnerSession(record.userId); // stamps 8h expiry
       onAuthenticated(record);
     } catch (error: any) {
       // Handles rate-limit errors thrown by the Convex mutation
-      setErrorMessage(error?.message?.replace(/^Error:/, "").trim() || "Login failed. Please try again.");
+      setErrorMessage(formatError(error));
     } finally {
       setIsLoggingIn(false);
     }
@@ -322,11 +390,11 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
         gpsLocation: setupDraft.gpsLocation,
         createdAt: new Date().toISOString(),
         authProvider: "google",
+        firebaseUid: firebaseUid || undefined,
       };
 
-      // Save to localStorage (for local session)
-      saveShopOwner(userRecord);
-      setShopOwnerSession(userRecord.userId);
+      // User stays in pending state; no local session started
+      // saveShopOwner and setShopOwnerSession removed to prevent auto-login
 
       // Parse GPS for Convex location fields
       const gpsMatch = setupDraft.gpsLocation?.match(
@@ -348,25 +416,29 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
         phone: userRecord.phone,
         image: userRecord.image,
         images: userRecord.images,
-        servicesJson: JSON.stringify(serviceCatalog),
+        services: serviceCatalog.map(s => ({
+          name: s.name,
+          price: s.price,
+          duration: s.durationMinutes,
+        })),
         startingPrice: userRecord.startingPrice,
         openTime: workingHours.start,
         closeTime: workingHours.end,
         nextSlot,
         gpsLocation: userRecord.gpsLocation,
         locationLabel: userRecord.location,
-        availabilitySlotsJson: JSON.stringify(availabilitySlots),
-        blockedDatesJson: JSON.stringify([]),
+        blockedDates: [],
         username: setupDraft.username.trim(),
         password: pwdHash,
         status: "pending",
+        firebaseUid: firebaseUid || undefined,
       });
 
       // Show waiting message
       setErrorMessage("Your account has been submitted and is currently waiting for approval.");
       setStep("access");
     } catch (error: any) {
-      setErrorMessage(error.message || "An error occurred during setup.");
+      setErrorMessage(formatError(error));
     } finally {
       setIsSubmitting(false);
     }

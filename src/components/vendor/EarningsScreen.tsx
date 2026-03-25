@@ -138,8 +138,7 @@ export default function EarningsScreen({
             <button 
               className="flex items-center gap-1.5 text-xs font-bold text-primary active:opacity-70 transition-opacity"
               onClick={() => {
-                // Toast or logic to trigger download
-                console.log("Downloading report...");
+                // Download report feature — to be implemented
               }}
             >
               <Download className="h-3.5 w-3.5" />

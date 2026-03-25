@@ -9,6 +9,10 @@ export const toggleSavedShop = mutation({
     shopId: v.id("shops"),
   },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+    if (identity.subject !== args.userId) throw new Error("Unauthorized");
+
     const existing = await ctx.db
       .query("savedShops")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
@@ -31,6 +35,10 @@ export const toggleSavedShop = mutation({
 export const getSavedShops = query({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+    if (identity.subject !== args.userId) throw new Error("Unauthorized");
+
     const records = await ctx.db
       .query("savedShops")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
@@ -104,6 +112,10 @@ export const seedOffers = mutation({
 export const getUserNotifications = query({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+    if (identity.subject !== args.userId) throw new Error("Unauthorized");
+
     return await ctx.db
       .query("notifications")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
@@ -115,6 +127,10 @@ export const getUserNotifications = query({
 export const seedNotifications = mutation({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+    if (identity.subject !== args.userId) throw new Error("Unauthorized");
+
     const existing = await ctx.db
       .query("notifications")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
@@ -137,5 +153,30 @@ export const markNotificationRead = mutation({
   args: { notificationId: v.id("notifications") },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.notificationId, { isRead: true });
+  },
+});
+
+export const deleteNotification = mutation({
+  args: { notificationId: v.id("notifications") },
+  handler: async (ctx, args) => {
+    await ctx.db.delete(args.notificationId);
+  },
+});
+
+export const clearUserNotifications = mutation({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+    if (identity.subject !== args.userId) throw new Error("Unauthorized");
+
+    const notifications = await ctx.db
+      .query("notifications")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+    
+    for (const n of notifications) {
+      await ctx.db.delete(n._id);
+    }
   },
 });

@@ -29,6 +29,7 @@ export interface ShopOwnerRecord {
   gpsLocation?: string;
   createdAt: string;
   authProvider: "phone" | "google";
+  firebaseUid?: string;
 }
 
 interface TrimoDatabase {
@@ -160,6 +161,7 @@ const normalizeShopOwnerRecord = (user: Partial<ShopOwnerRecord>): ShopOwnerReco
     gpsLocation: user.gpsLocation,
     createdAt: user.createdAt ?? new Date().toISOString(),
     authProvider: user.authProvider ?? "phone",
+    firebaseUid: user.firebaseUid,
   };
 };
 

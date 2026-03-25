@@ -9,13 +9,14 @@
  */
 
 import type * as bookings from "../bookings.js";
-import type * as customers from "../customers.js";
 import type * as http from "../http.js";
 import type * as profile from "../profile.js";
+import type * as rateLimit from "../rateLimit.js";
 import type * as reviews from "../reviews.js";
 import type * as services from "../services.js";
 import type * as shops from "../shops.js";
 import type * as users from "../users.js";
+import type * as utils from "../utils.js";
 
 import type {
   ApiFromModules,
@@ -25,13 +26,14 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   bookings: typeof bookings;
-  customers: typeof customers;
   http: typeof http;
   profile: typeof profile;
+  rateLimit: typeof rateLimit;
   reviews: typeof reviews;
   services: typeof services;
   shops: typeof shops;
   users: typeof users;
+  utils: typeof utils;
 }>;
 
 /**

@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { checkRateLimit } from "./rateLimit";
 
 // Submit a review for a completed booking.
 // Uses string-based customerId (matching our booking system).
@@ -14,6 +15,12 @@ export const submitReview = mutation({
     tags: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+    if (identity.subject !== args.customerId) throw new Error("Unauthorized");
+
+    await checkRateLimit(ctx, identity.subject, "submitReview", 5, 24 * 60 * 60 * 1000); // 5 per day
+
     // ── 1. Validate rating range ───────────────────────────────────────────
     if (args.rating < 1 || args.rating > 5) {
       throw new Error("Rating must be between 1 and 5.");
@@ -84,6 +91,10 @@ export const submitReview = mutation({
 export const getReviewsByCustomer = query({
   args: { customerId: v.string() },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+    if (identity.subject !== args.customerId) throw new Error("Unauthorized");
+
     // We track reviews by looking for bookings that are completed and
     // their booking IDs were used in review submission.
     // Since we don't have a separate reviews table keyed by customerId,
@@ -103,6 +114,10 @@ export const addReview = mutation({
     callerUid: v.string(),
   },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+    if (identity.subject !== args.callerUid) throw new Error("Unauthorized");
+
     const user = await ctx.db.get(args.userId);
     if (!user || user.uid !== args.callerUid) {
       throw new Error("Unauthorized: you cannot post a review as another user.");

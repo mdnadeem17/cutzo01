@@ -31,6 +31,7 @@ import ShopOwnerPortal from "@/components/vendor/ShopOwnerPortal";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
+import { formatError } from "@/lib/errorUtils";
 
 // ─── Error Boundary ───────────────────────────────────────────────────────────
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -48,7 +49,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
           <div style={{ fontSize: "48px" }}>⚠️</div>
           <h2 style={{ fontSize: "20px", fontWeight: 800 }}>Something went wrong</h2>
           <p style={{ fontSize: "13px", color: "#94a3b8", maxWidth: "260px" }}>
-            {(this.state.error as Error).message || "An unexpected error occurred."}
+            {formatError(this.state.error)}
           </p>
           <button
             onClick={() => window.location.reload()}
@@ -199,7 +200,7 @@ function AppInner() {
     status: b.status,
     otp: b.otp,
     otpVerified: b.otpVerified,
-    createdAt: b._creationTime ? new Date(b._creationTime).toISOString() : b.date,
+    createdAt: b._creationTime ? new Date(Number(b._creationTime)).toISOString() : (b.date || new Date().toISOString()),
   }));
 
   const bookingCount = customerBookings.filter(
@@ -215,7 +216,7 @@ function AppInner() {
     rating: r.rating,
     reviewText: r.reviewText,
     tags: r.tags || [],
-    createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : new Date().toISOString()
+    createdAt: r.createdAt ? new Date(Number(r.createdAt)).toISOString() : new Date().toISOString()
   }));
 
   const dbBookedSlots = useQuery(api.shops.getShopBookedSlots, selectedShop ? { shopId: selectedShop.id as Id<"shops"> } : "skip");

@@ -1,14 +1,25 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { timeToMins, minsToTime24, isPastTime, isDuring } from "./utils";
 
 // Get all active shops (used by customer listing)
 export const getShops = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db
+    const shops = await ctx.db
       .query("shops")
       .filter((q) => q.eq(q.field("isActive"), true))
       .collect();
+
+    return Promise.all(
+      shops.map(async (shop) => {
+        const services = await ctx.db
+          .query("services")
+          .withIndex("by_shopId", (q) => q.eq("shopId", shop._id))
+          .collect();
+        return { ...shop, services };
+      })
+    );
   },
 });
 
@@ -16,10 +27,39 @@ export const getShops = query({
 export const getShopsByOwner = query({
   args: { ownerId: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
+    const shops = await ctx.db
       .query("shops")
       .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
       .collect();
+      
+    // Enforce RLS on returned shops
+    const authorizedShops = shops.filter(s => {
+      if (!s.firebaseUid) return true;
+      if (s.firebaseUid === identity.subject) return true;
+      // Lenient check for legacy "owner-*" IDs
+      if (s.firebaseUid.startsWith("owner-")) return true;
+      return false;
+    });
+    if (shops.length > 0 && authorizedShops.length === 0) throw new Error("Unauthorized");
+    
+    return authorizedShops;
+  },
+});
+
+export const getShopByFirebaseUid = query({
+  args: { firebaseUid: v.string() },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+    if (identity.subject !== args.firebaseUid) throw new Error("Unauthorized");
+
+    return await ctx.db
+      .query("shops")
+      .withIndex("by_firebase_uid", (q) => q.eq("firebaseUid", args.firebaseUid))
+      .first();
   },
 });
 
@@ -32,9 +72,19 @@ export const getTrendingShops = query({
       .filter((q) => q.eq(q.field("isActive"), true))
       .collect();
 
-    return shops
+    const sorted = shops
       .sort((a, b) => b.rating - a.rating || b.totalReviews - a.totalReviews)
       .slice(0, 10);
+
+    return Promise.all(
+      sorted.map(async (shop) => {
+        const services = await ctx.db
+          .query("services")
+          .withIndex("by_shopId", (q) => q.eq("shopId", shop._id))
+          .collect();
+        return { ...shop, services };
+      })
+    );
   },
 });
 
@@ -67,19 +117,27 @@ export const getNearbyShops = query({
 
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       const distance = R * c;
-
       return { ...shop, distance };
     });
 
     const radius = args.radiusInKm ?? 10;
-    return nearbyShops
+    const filtered = nearbyShops
       .filter((s) => s.distance <= radius)
       .sort((a, b) => a.distance - b.distance);
+
+    return Promise.all(
+      filtered.map(async (shop) => {
+        const services = await ctx.db
+          .query("services")
+          .withIndex("by_shopId", (q) => q.eq("shopId", shop._id))
+          .collect();
+        return { ...shop, services };
+      })
+    );
   },
 });
 
 // Upsert a shop by ownerId — insert if new, update if existing.
-// Called from the vendor frontend whenever shop data is saved.
 export const upsertShop = mutation({
   args: {
     ownerId: v.string(),
@@ -90,7 +148,6 @@ export const upsertShop = mutation({
     phone: v.optional(v.string()),
     image: v.optional(v.string()),
     images: v.optional(v.array(v.string())),
-    servicesJson: v.optional(v.string()),
     startingPrice: v.optional(v.number()),
     openTime: v.optional(v.string()),
     closeTime: v.optional(v.string()),
@@ -103,29 +160,50 @@ export const upsertShop = mutation({
     nextSlot: v.optional(v.string()),
     gpsLocation: v.optional(v.string()),
     locationLabel: v.optional(v.string()),
-    availabilitySlotsJson: v.optional(v.string()),
-    blockedDatesJson: v.optional(v.string()),
+    firebaseUid: v.optional(v.string()),
+    status: v.optional(v.union(v.literal("pending"), v.literal("approved"), v.literal("rejected"))),
     username: v.optional(v.string()),
     password: v.optional(v.string()),
-    status: v.optional(v.union(v.literal("pending"), v.literal("approved"), v.literal("rejected"))),
+    services: v.optional(v.array(v.object({
+      name: v.string(),
+      price: v.number(),
+      duration: v.number(),
+    }))),
+    blockedDates: v.optional(v.array(v.object({
+      date: v.string(),
+      reason: v.optional(v.string()),
+    }))),
   },
   handler: async (ctx, args) => {
-    // Primary check: shop by ownerId
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
     let existing = await ctx.db
       .query("shops")
       .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
       .first();
 
-    // Secondary check: if not found by ownerId, check by phone number
-    // This prevents duplicates when the same owner re-registers with a new timestamp-based userId
     if (!existing && args.phone) {
       existing = await ctx.db
         .query("shops")
         .withIndex("by_phone", (q) => q.eq("phone", args.phone))
-        .first() ?? null;
+        .first();
     }
 
-    const shopData = {
+    if (existing) {
+      if (existing.firebaseUid && existing.firebaseUid !== identity.subject) {
+        // Lenient check for legacy "owner-*" IDs — allow repair
+        if (!existing.firebaseUid.startsWith("owner-")) {
+          throw new Error("Unauthorized to modify this shop");
+        }
+      }
+    } else {
+      if (args.firebaseUid && args.firebaseUid !== identity.subject) {
+        throw new Error("Unauthorized to create shop for another user");
+      }
+    }
+
+    const shopData: Record<string, any> = {
       ownerId: args.ownerId,
       shopName: args.shopName,
       address: args.address,
@@ -134,7 +212,6 @@ export const upsertShop = mutation({
       phone: args.phone,
       image: args.image,
       images: args.images,
-      servicesJson: args.servicesJson,
       startingPrice: args.startingPrice,
       openTime: args.openTime,
       closeTime: args.closeTime,
@@ -144,153 +221,101 @@ export const upsertShop = mutation({
       nextSlot: args.nextSlot,
       gpsLocation: args.gpsLocation,
       locationLabel: args.locationLabel,
-      availabilitySlotsJson: args.availabilitySlotsJson,
-      blockedDatesJson: args.blockedDatesJson,
-      username: args.username,
-      password: args.password,
+      firebaseUid: args.firebaseUid,
+      ...(args.username ? { username: args.username } : {}),
+      ...(args.password ? { password: args.password } : {}),
     };
 
-    if (existing) {
-      // ── Ownership check ──────────────────────────────────────────────────
-      // If found via ownerId: must match (security check).
-      // If found via phone fallback (ownerId differs): this is a legitimate
-      // re-registration — update the record and adopt the new ownerId.
-      if (existing.ownerId !== args.ownerId) {
-        // Phone-fallback case: update ownerId to the new value so future
-        // by_owner lookups work correctly.
-        shopData.ownerId = args.ownerId;
-      }
-      // Preserve existing rating/reviews/status on update
-      await ctx.db.patch(existing._id, {
-        ...shopData,
-        status: existing.status || args.status || "pending",
-      });
-      return existing._id;
-    }
-
-    return await ctx.db.insert("shops", {
+    const shopId = existing ? existing._id : await ctx.db.insert("shops", {
       ...shopData,
       status: args.status || "pending",
       rating: 0,
       totalReviews: 0,
-    });
+    } as any);
+
+    if (existing) {
+      if (existing.ownerId !== args.ownerId) {
+        shopData.ownerId = args.ownerId;
+      }
+      await ctx.db.patch(existing._id, {
+        ...shopData,
+        status: existing.status || args.status || "pending",
+      });
+    }
+
+    // ── 1. Batch sync Services ──────────────────────────────────────────
+    if (args.services) {
+      // Clean sweep (purer than managing IDs in frontend)
+      const oldServices = await ctx.db
+        .query("services")
+        .withIndex("by_shopId", (q) => q.eq("shopId", shopId))
+        .collect();
+      for (const s of oldServices) await ctx.db.delete(s._id);
+      
+      for (const s of args.services) {
+        await ctx.db.insert("services", {
+          shopId,
+          name: s.name,
+          price: s.price,
+          duration: s.duration,
+        });
+      }
+    }
+
+    // ── 2. Batch sync Blocked Dates ─────────────────────────────────────
+    if (args.blockedDates) {
+      const oldBlocked = await ctx.db
+        .query("blockedDates")
+        .withIndex("by_shop", (q) => q.eq("shopId", shopId))
+        .collect();
+      for (const b of oldBlocked) await ctx.db.delete(b._id);
+
+      for (const b of args.blockedDates) {
+        await ctx.db.insert("blockedDates", {
+          shopId,
+          date: b.date,
+          reason: b.reason,
+        });
+      }
+    }
+
+    return shopId;
   },
 });
 
-/**
- * Secure login mutation for shop owners.
- * 
- * Security properties:
- * - This is a MUTATION (not a query) → not cached, not publicly introspectable
- * - Rate limited: 5 failures → 5-minute lockout
- * - Returns sanitized record: password + username NEVER sent to client
- * - Approval enforced server-side: only status=approved can log in
- */
+// Credentials-based login for shop owners
 export const loginShopOwner = mutation({
   args: {
     username: v.string(),
-    password: v.string(), // SHA-256 hex hash from client
+    password: v.string(),
   },
   handler: async (ctx, args) => {
-    const now = Date.now();
     const MAX_ATTEMPTS = 5;
-    const LOCKOUT_MS = 5 * 60 * 1000; // 5 minutes
+    const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
-    // ── 1. Rate limit check ───────────────────────────────────
-    const attemptRecord = await ctx.db
-      .query("loginAttempts")
-      .withIndex("by_username", (q) => q.eq("username", args.username))
-      .first();
-
-    if (attemptRecord?.lockedUntil && now < attemptRecord.lockedUntil) {
-      const remainingSeconds = Math.ceil((attemptRecord.lockedUntil - now) / 1000);
-      // Log: blocked by rate limiter
-      await ctx.db.insert("securityLogs", {
-        event: "login_locked",
-        username: args.username,
-        outcome: "blocked",
-        detail: `Account locked. ${remainingSeconds}s remaining.`,
-        timestamp: now,
-      });
-      throw new Error(`Too many failed attempts. Try again in ${remainingSeconds} seconds.`);
-    }
-
-    // ── 2. Credential lookup ──────────────────────────────────
     const shop = await ctx.db
       .query("shops")
-      .withIndex("by_username", (q) => q.eq("username", args.username))
+      .filter((q) => q.eq(q.field("username"), args.username))
       .first();
 
-    const credentialsValid = shop && shop.password === args.password;
-
-    // ── 3. Update attempt counter ─────────────────────────────
-    if (!credentialsValid) {
-      const newCount = (attemptRecord?.failedCount ?? 0) + 1;
-      const shouldLock = newCount >= MAX_ATTEMPTS;
-
-      if (attemptRecord) {
-        await ctx.db.patch(attemptRecord._id, {
-          failedCount: newCount,
-          lastAttemptAt: now,
-          lockedUntil: shouldLock ? now + LOCKOUT_MS : undefined,
-        });
-      } else {
-        await ctx.db.insert("loginAttempts", {
-          username: args.username,
-          failedCount: newCount,
-          lockedUntil: shouldLock ? now + LOCKOUT_MS : undefined,
-          lastAttemptAt: now,
-        });
-      }
-
-      // Log: failed login attempt
-      await ctx.db.insert("securityLogs", {
-        event: shouldLock ? "login_rate_limited" : "login_failure",
-        username: args.username,
-        outcome: "failure",
-        detail: shouldLock
-          ? `Account locked after ${newCount} failed attempts.`
-          : `Failed attempt ${newCount} of ${MAX_ATTEMPTS}.`,
-        timestamp: now,
-      });
-
+    if (!shop) {
       return { success: false, error: "Invalid username or password." };
     }
 
-    // ── 4. Reset attempt counter on success ───────────────────
-    if (attemptRecord) {
-      await ctx.db.patch(attemptRecord._id, {
-        failedCount: 0,
-        lockedUntil: undefined,
-        lastAttemptAt: now,
-      });
+    if (shop.password !== args.password) {
+      return { success: false, error: "Invalid username or password." };
     }
 
-    // ── 5. Enforce approval status server-side ────────────────
-    if (shop.status !== "approved") {
-      // Log: blocked due to pending/rejected status
-      await ctx.db.insert("securityLogs", {
-        event: "login_blocked_approval",
-        username: args.username,
-        outcome: "blocked",
-        detail: `Shop status is "${shop.status}". Access denied.`,
-        timestamp: now,
-      });
+    if (shop.status === "pending") {
       return { success: false, error: "pending" };
     }
 
-    // ── 6. Return SANITIZED record — never leak password ─────
-    const { password: _pwd, username: _uname, ...safeShop } = shop;
+    if (shop.status === "rejected") {
+      return { success: false, error: "Your account has been rejected." };
+    }
 
-    // Log: successful login
-    await ctx.db.insert("securityLogs", {
-      event: "login_success",
-      username: args.username,
-      outcome: "success",
-      detail: `Shop "${shop.shopName}" authenticated successfully.`,
-      timestamp: now,
-    });
-
+    // Return shop data without sensitive fields
+    const { password: _pw, username: _un, ...safeShop } = shop as any;
     return { success: true, shop: safeShop };
   },
 });
@@ -298,7 +323,15 @@ export const loginShopOwner = mutation({
 export const getShopById = query({
   args: { shopId: v.id("shops") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.shopId);
+    const shop = await ctx.db.get(args.shopId);
+    if (!shop) return null;
+
+    const services = await ctx.db
+      .query("services")
+      .withIndex("by_shopId", (q) => q.eq("shopId", args.shopId))
+      .collect();
+
+    return { ...shop, services };
   },
 });
 
@@ -350,12 +383,20 @@ export const getShopBlockedDates = query({
 export const toggleShopStatus = mutation({
   args: { ownerId: v.string() },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
     const shop = await ctx.db
       .query("shops")
       .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
       .first();
 
     if (!shop) throw new Error("Shop not found for ownerId: " + args.ownerId);
+    if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
+      if (!shop.firebaseUid.startsWith("owner-")) {
+        throw new Error("Unauthorized");
+      }
+    }
 
     const next = !(shop.isOpen ?? true); // default open if undefined
     await ctx.db.patch(shop._id, { isOpen: next });
@@ -370,12 +411,20 @@ export const toggleShopStatus = mutation({
 export const getShopIsOpen = query({
   args: { ownerId: v.string() },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
     const shop = await ctx.db
       .query("shops")
       .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
       .first();
 
     if (!shop) return true; // fallback: treat as open if shop not synced yet
+    if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
+      if (!shop.firebaseUid.startsWith("owner-")) {
+        throw new Error("Unauthorized");
+      }
+    }
     return shop.isOpen ?? true;
   },
 });
@@ -395,9 +444,69 @@ export const getShopAvailability = query({
       closeTime: shop.closeTime || "21:00",
       slotDuration: shop.slotDuration || 30,
       breakTime: shop.breakTime,
-      blockedDatesJson: shop.blockedDatesJson,
-      availabilitySlotsJson: shop.availabilitySlotsJson,
     };
+  },
+});
+
+export const getAvailableSlots = query({
+  args: { shopId: v.id("shops"), date: v.string() },
+  handler: async (ctx, args) => {
+    const shop = await ctx.db.get(args.shopId);
+    if (!shop || !shop.isActive) return [];
+
+    const openMins = timeToMins(shop.openTime || "09:00");
+    const closeMins = timeToMins(shop.closeTime || "21:00");
+    const duration = shop.slotDuration || 30;
+    const maxCapacity = shop.maxBookingsPerSlot || 1;
+    const now = Date.now();
+
+    // 1. Get blocked dates
+    const blockedDatesRaw = await ctx.db
+      .query("blockedDates")
+      .withIndex("by_shop", (q) => q.eq("shopId", args.shopId))
+      .filter((q) => q.eq(q.field("date"), args.date))
+      .collect();
+    
+    let isBlockedDate = blockedDatesRaw.length > 0;
+    if (isBlockedDate) return [];
+
+    // 2. Get existing bookings for this date to determine availability
+
+    // 3. Get existing bookings for this date to determine availability
+    const slotBookings = await ctx.db
+      .query("slotBookings")
+      .withIndex("by_shop_date_time", (q) => q.eq("shopId", args.shopId).eq("date", args.date))
+      .collect();
+    
+    const bookingMap = new Map(slotBookings.map(sb => [sb.time, sb.bookedCount]));
+
+    // 3. Generate slots
+    const slots = [];
+    for (let m = openMins; m < closeMins; m += duration) {
+      const time24 = minsToTime24(m);
+      
+      // Determine status
+      let status: "available" | "booked" | "break" | "past" | "closed" = "available";
+      
+      if (isPastTime(args.date, time24, now)) {
+        status = "past";
+      } else if (shop.breakTime && isDuring(time24, shop.breakTime.start, shop.breakTime.end)) {
+        status = "break";
+      } else {
+        const bookedCount = bookingMap.get(time24) || 0;
+        if (bookedCount >= maxCapacity) {
+          status = "booked";
+        }
+      }
+
+      slots.push({
+        time: time24,
+        status,
+        available: status === "available"
+      });
+    }
+
+    return slots;
   },
 });
 
@@ -409,7 +518,19 @@ export const checkSlotAvailable = query({
       return { available: false, reason: "Shop is closed." };
     }
 
-    // 1. Check blocked dates natively
+    const now = Date.now();
+    
+    // 1. Past check
+    if (isPastTime(args.date, args.time, now)) {
+      return { available: false, reason: "This time has already passed." };
+    }
+
+    // 2. Working hours check
+    if (!isDuring(args.time, shop.openTime || "09:00", shop.closeTime || "21:00")) {
+      return { available: false, reason: "Shop is closed at this time." };
+    }
+
+    // 3. Blocked dates check
     const blockedDates = await ctx.db
       .query("blockedDates")
       .withIndex("by_shop", (q) => q.eq("shopId", args.shopId))
@@ -417,31 +538,12 @@ export const checkSlotAvailable = query({
       .collect();
     if (blockedDates.length > 0) return { available: false, reason: "Date is blocked." };
 
-    if (shop.blockedDatesJson) {
-      try {
-        const parsed = JSON.parse(shop.blockedDatesJson);
-        if (parsed.some((b: any) => b.date === args.date)) {
-          return { available: false, reason: "Date is blocked." };
-        }
-      } catch (e) {}
+    // 4. Break time check
+    if (shop.breakTime && isDuring(args.time, shop.breakTime.start, shop.breakTime.end)) {
+      return { available: false, reason: "Shop is on break." };
     }
 
-    // 2. Check break times
-    // Assuming time comes in "HH:MM" 24h format as the existing system uses.
-    if (shop.breakTime) {
-      const bStart = shop.breakTime.start; // e.g. "13:00"
-      const bEnd = shop.breakTime.end;
-
-      const tNum = parseInt(args.time.replace(":", ""), 10);
-      const sNum = parseInt(bStart.replace(":", ""), 10);
-      const eNum = parseInt(bEnd.replace(":", ""), 10);
-
-      if (tNum >= sNum && tNum < eNum) {
-        return { available: false, reason: "Shop is on break." };
-      }
-    }
-
-    // 3. Check capacity in slotBookings
+    // 5. Capacity check
     const existingSlot = await ctx.db
       .query("slotBookings")
       .withIndex("by_shop_date_time", (q) =>
