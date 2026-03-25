@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { timeToMins, minsToTime24, isPastTime, isDuring } from "./utils";
+import bcrypt from "bcryptjs";
 
 // Get all active shops (used by customer listing)
 export const getShops = query({
@@ -10,16 +11,12 @@ export const getShops = query({
       .query("shops")
       .filter((q) => q.eq(q.field("isActive"), true))
       .collect();
-
-    return Promise.all(
-      shops.map(async (shop) => {
-        const services = await ctx.db
-          .query("services")
-          .withIndex("by_shopId", (q) => q.eq("shopId", shop._id))
-          .collect();
-        return { ...shop, services };
-      })
-    );
+    
+    // Map denormalized summary to services field for O(1) listing performance
+    return shops.map(shop => ({
+      ...shop,
+      services: shop.servicesSummary || []
+    }));
   },
 });
 
@@ -72,19 +69,13 @@ export const getTrendingShops = query({
       .filter((q) => q.eq(q.field("isActive"), true))
       .collect();
 
-    const sorted = shops
+    return shops
       .sort((a, b) => b.rating - a.rating || b.totalReviews - a.totalReviews)
-      .slice(0, 10);
-
-    return Promise.all(
-      sorted.map(async (shop) => {
-        const services = await ctx.db
-          .query("services")
-          .withIndex("by_shopId", (q) => q.eq("shopId", shop._id))
-          .collect();
-        return { ...shop, services };
-      })
-    );
+      .slice(0, 10)
+      .map(shop => ({
+        ...shop,
+        services: shop.servicesSummary || []
+      }));
   },
 });
 
@@ -121,19 +112,13 @@ export const getNearbyShops = query({
     });
 
     const radius = args.radiusInKm ?? 10;
-    const filtered = nearbyShops
+    return nearbyShops
       .filter((s) => s.distance <= radius)
-      .sort((a, b) => a.distance - b.distance);
-
-    return Promise.all(
-      filtered.map(async (shop) => {
-        const services = await ctx.db
-          .query("services")
-          .withIndex("by_shopId", (q) => q.eq("shopId", shop._id))
-          .collect();
-        return { ...shop, services };
-      })
-    );
+      .sort((a, b) => a.distance - b.distance)
+      .map(shop => ({
+        ...shop,
+        services: shop.servicesSummary || []
+      }));
   },
 });
 
@@ -203,6 +188,12 @@ export const upsertShop = mutation({
       }
     }
 
+    // Hash password if provided and not already hashed
+    let hashedPassword = args.password;
+    if (args.password && !args.password.startsWith("$2a$")) {
+      hashedPassword = await bcrypt.hash(args.password, 10);
+    }
+
     const shopData: Record<string, any> = {
       ownerId: args.ownerId,
       shopName: args.shopName,
@@ -223,7 +214,7 @@ export const upsertShop = mutation({
       locationLabel: args.locationLabel,
       firebaseUid: args.firebaseUid,
       ...(args.username ? { username: args.username } : {}),
-      ...(args.password ? { password: args.password } : {}),
+      ...(hashedPassword ? { password: hashedPassword } : {}),
     };
 
     const shopId = existing ? existing._id : await ctx.db.insert("shops", {
@@ -231,6 +222,7 @@ export const upsertShop = mutation({
       status: args.status || "pending",
       rating: 0,
       totalReviews: 0,
+      totalRatingSum: 0,
     } as any);
 
     if (existing) {
@@ -252,6 +244,7 @@ export const upsertShop = mutation({
         .collect();
       for (const s of oldServices) await ctx.db.delete(s._id);
       
+      const summary = [];
       for (const s of args.services) {
         await ctx.db.insert("services", {
           shopId,
@@ -259,7 +252,11 @@ export const upsertShop = mutation({
           price: s.price,
           duration: s.duration,
         });
+        summary.push({ name: s.name, price: s.price });
       }
+
+      // Update the denormalized summary for architectural performance
+      await ctx.db.patch(shopId, { servicesSummary: summary });
     }
 
     // ── 2. Batch sync Blocked Dates ─────────────────────────────────────
@@ -298,11 +295,28 @@ export const loginShopOwner = mutation({
       .filter((q) => q.eq(q.field("username"), args.username))
       .first();
 
-    if (!shop) {
+    if (!shop || !shop.password) {
       return { success: false, error: "Invalid username or password." };
     }
 
-    if (shop.password !== args.password) {
+    let isMatch = false;
+    const storedPassword = shop.password;
+
+    // 1. Try standard bcrypt comparison
+    if (storedPassword.startsWith("$2a$")) {
+      isMatch = await bcrypt.compare(args.password, storedPassword);
+    } else {
+      // 2. Legacy plaintext comparison (Lazy Migration)
+      isMatch = storedPassword === args.password;
+      
+      if (isMatch) {
+        // Automatically upgrade to hashed password
+        const newHash = await bcrypt.hash(args.password, 10);
+        await ctx.db.patch(shop._id, { password: newHash });
+      }
+    }
+
+    if (!isMatch) {
       return { success: false, error: "Invalid username or password." };
     }
 

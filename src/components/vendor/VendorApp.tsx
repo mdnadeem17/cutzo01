@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { App } from "@capacitor/app";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
 import AvailabilityScreen from "./AvailabilityScreen";
@@ -110,11 +110,16 @@ export default function VendorApp({ onExit, onLogout, ownerRecord, onOwnerRecord
   const completeBookingMutation = useMutation(api.bookings.completeBooking);
   const cancelBookingMutation = useMutation(api.bookings.cancelBooking);
 
-  // ── Live bookings from Convex ──────────────────────────────────────────────
-  const convexBookingsRaw = useQuery(
+  // ── Live bookings from Convex (Paginated) ─────────────────────────────────
+  const { results: convexBookingsRaw, status: bookingsStatus, loadMore: loadMoreBookings } = usePaginatedQuery(
     api.bookings.getShopBookingsByOwnerId,
-    ownerRecord ? { ownerId: ownerRecord.userId } : "skip"
+    ownerRecord ? { ownerId: ownerRecord.userId } : "skip",
+    { initialNumItems: 25 }
   );
+
+  const bookingsLoading = bookingsStatus === "LoadingFirstPage";
+  const canLoadMoreBookings = bookingsStatus === "CanLoadMore";
+  const isLoadingMoreBookings = bookingsStatus === "LoadingMore";
 
   // Map to VendorBooking type (convex already returns the right shape)
   const bookings: VendorBooking[] = (convexBookingsRaw ?? []).map((b) => ({
@@ -164,9 +169,9 @@ export default function VendorApp({ onExit, onLogout, ownerRecord, onOwnerRecord
   const mainTabs: VendorTab[] = ["dashboard", "bookings", "services", "profile"];
   const showBottomNav = mainTabs.includes(screen as VendorTab);
 
-  const todayBookings = bookings.filter(isBookingToday);
-  const pendingCount = bookings.filter((booking) => booking.status === "pending").length;
-  const todayEarnings = getTodayEarnings(bookings);
+  const todayBookings = (bookings ?? []).filter(isBookingToday);
+  const pendingCount = (bookings ?? []).filter((booking) => booking.status === "pending").length;
+  const todayEarnings = getTodayEarnings(bookings ?? []);
   const weeklyEarnings = getWeeklyEarnings(bookings);
   const monthlyEarnings = getMonthlyEarnings(bookings);
   const earningsHistory = [...bookings]
@@ -366,8 +371,6 @@ export default function VendorApp({ onExit, onLogout, ownerRecord, onOwnerRecord
     syncOwnerRecord(profile, services, workingHours, slotDuration, maxBookingsPerSlot, breakTime, slots, nextBlockedDates);
   };
 
-  // Loading state while Convex bootstraps
-  const bookingsLoading = convexBookingsRaw === undefined && !!ownerRecord;
 
   return (
     <>
@@ -394,6 +397,9 @@ export default function VendorApp({ onExit, onLogout, ownerRecord, onOwnerRecord
         <BookingsScreen
           bookings={bookings}
           bookingsLoading={bookingsLoading}
+          canLoadMore={canLoadMoreBookings}
+          isLoadingMore={isLoadingMoreBookings}
+          onLoadMore={() => loadMoreBookings(25)}
           onAcceptBooking={handleAcceptBooking}
           onRejectBooking={handleCancelBooking}
           onCompleteBooking={handleCompleteBooking}

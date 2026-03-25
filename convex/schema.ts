@@ -24,7 +24,9 @@ export default defineSchema({
     }),
     rating: v.number(),
     totalReviews: v.number(),
+    totalRatingSum: v.optional(v.number()), // New field for accurate averaging
     isActive: v.boolean(),
+    servicesSummary: v.optional(v.array(v.object({ name: v.string(), price: v.number() }))), // Denormalized for listing performance
     isOpen: v.optional(v.boolean()), // Owner-controlled: accepts bookings right now?
     phone: v.optional(v.string()),
     image: v.optional(v.string()),
@@ -107,7 +109,9 @@ export default defineSchema({
     otpVerified: v.optional(v.boolean()),
     otpCreatedAt: v.optional(v.number()),
     completedAt: v.optional(v.string())
-  }),
+  }).index("by_shop_date_time", ["shopId", "date", "time"])
+    .index("by_customer", ["customerId", "date", "time"])
+    .index("by_shop", ["shopId", "date", "time"]),
 
   reviews: defineTable({
     userId: v.optional(v.id("users")),
@@ -143,7 +147,6 @@ export default defineSchema({
   rateLimits: defineTable({
     userId: v.string(),
     endpoint: v.string(),
-    count: v.number(),
-    windowStart: v.number(),
-  }).index("by_user_endpoint", ["userId", "endpoint"]),
+    timestamp: v.number(),
+  }).index("by_user_endpoint_time", ["userId", "endpoint", "timestamp"]),
 });

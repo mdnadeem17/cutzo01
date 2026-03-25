@@ -17,6 +17,9 @@ import { Booking, Review } from "./types";
 interface Props {
   bookings: Booking[];
   bookingsLoading?: boolean;
+  canLoadMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
   onGoHome: () => void;
   reviews: Review[];
   onSubmitReview: (review: Omit<Review, "reviewId" | "createdAt">) => void;
@@ -724,6 +727,9 @@ type ActiveView = "list" | "details" | "reschedule";
 export default function ActivityScreen({
   bookings,
   bookingsLoading = false,
+  canLoadMore = false,
+  isLoadingMore = false,
+  onLoadMore = () => {},
   onGoHome,
   reviews,
   onSubmitReview,
@@ -934,6 +940,23 @@ export default function ActivityScreen({
                 onOpenReview={() => handleOpenReview(booking)}
               />
             ))
+          )}
+
+          {canLoadMore && (
+            <button
+              onClick={onLoadMore}
+              disabled={isLoadingMore}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-primary/20 bg-white py-4 text-sm font-bold text-primary shadow-sm hover:bg-primary/5 active:scale-95 transition-all disabled:opacity-50"
+            >
+              {isLoadingMore ? (
+                <>
+                  <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  <span>Loading...</span>
+                </>
+              ) : (
+                "Load More Bookings"
+              )}
+            </button>
           )}
 
         </div>

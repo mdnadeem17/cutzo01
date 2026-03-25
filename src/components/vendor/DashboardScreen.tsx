@@ -21,6 +21,9 @@ interface Props {
   onOpenAvailability: () => void;
   onOpenEarnings: () => void;
   onOpenBookings: () => void;
+  canLoadMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 // Custom Status Chip based on the user request (Waiting, In Progress, Completed, etc)
@@ -120,6 +123,9 @@ export default function DashboardScreen({
   onOpenAvailability,
   onOpenEarnings,
   onOpenBookings,
+  canLoadMore = false,
+  isLoadingMore = false,
+  onLoadMore = () => {},
 }: Props) {
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -370,6 +376,18 @@ export default function DashboardScreen({
               ))
             )}
           </AnimatePresence>
+
+          {canLoadMore && (
+            <motion.button
+              whileTap={{ scale: 0.98 }}
+              onClick={onLoadMore}
+              disabled={isLoadingMore}
+              className="mt-2 w-full rounded-[20px] border border-dashed border-primary/30 bg-white/50 py-4 text-xs font-bold uppercase tracking-widest text-primary hover:bg-white active:scale-95 transition-all disabled:opacity-50"
+            >
+              {isLoadingMore ? "Loading More..." : "Load More Activity"}
+            </motion.button>
+          )}
+
         </div>
       </div>
       

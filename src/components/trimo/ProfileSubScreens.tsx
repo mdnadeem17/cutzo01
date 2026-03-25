@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   ArrowLeft,
@@ -239,12 +239,15 @@ export function PersonalInfoScreen({ userId, onBack }: { userId: string; onBack:
 // ─── Notifications Screen ──────────────────────────────────────────────────
 
 export function NotificationsScreen({ userId, onBack }: { userId: string; onBack: () => void }) {
-  const notifications = useQuery(api.profile.getUserNotifications, { userId });
-  const seed = useMutation(api.profile.seedNotifications);
-  const clearAll = useMutation(api.profile.clearUserNotifications);
-  const deleteNotification = useMutation(api.profile.deleteNotification);
-  
-  useEffect(() => { seed({ userId }); }, [userId, seed]);
+  const { results, status, loadMore } = usePaginatedQuery(
+    api.profile.getUserNotifications,
+    { userId },
+    { initialNumItems: 10 }
+  );
+
+  useEffect(() => {
+    seed({ userId });
+  }, [userId, seed]);
 
   const handleClearAll = async () => {
     if (confirm("Are you sure you want to clear all notifications?")) {
@@ -257,7 +260,7 @@ export function NotificationsScreen({ userId, onBack }: { userId: string; onBack
     await deleteNotification({ notificationId: id });
   };
 
-  const actionButton = notifications && notifications.length > 0 ? (
+  const actionButton = results.length > 0 ? (
     <button
       onClick={handleClearAll}
       className="rounded-full bg-white/20 px-3 py-1.5 text-xs font-bold text-white scale-tap hover:bg-white/30 transition-colors"
@@ -270,16 +273,16 @@ export function NotificationsScreen({ userId, onBack }: { userId: string; onBack
     <div className="flex h-[100dvh] flex-col bg-muted">
       <ScreenHeader title="Notifications" subtitle="Updates and alerts" onBack={onBack} action={actionButton} />
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-20">
-        {notifications === undefined ? (
+        {status === "LoadingFirstPage" ? (
           <div className="py-20 text-center animate-pulse">Loading...</div>
-        ) : notifications.length === 0 ? (
+        ) : results.length === 0 ? (
           <div className="py-20 text-center text-muted-foreground">
             <Bell className="mx-auto mb-3 h-10 w-10 opacity-30" />
             <p className="font-semibold">No notifications yet</p>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {notifications.map((n) => (
+            {results.map((n) => (
               <div key={n._id} className={`flex gap-3 rounded-[18px] p-4 card-shadow relative ${n.isRead ? "bg-card" : "bg-primary/5"}`}>
                 <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${n.isRead ? "bg-muted text-muted-foreground" : "bg-primary text-white"}`}>
                   <Bell className="h-5 w-5" />
@@ -301,6 +304,21 @@ export function NotificationsScreen({ userId, onBack }: { userId: string; onBack
                 </button>
               </div>
             ))}
+            
+            {status === "CanLoadMore" && (
+              <button
+                onClick={() => loadMore(15)}
+                className="mt-4 w-full rounded-xl border border-border py-4 text-sm font-bold text-primary hover:bg-primary/5 active:scale-95 transition-all"
+              >
+                Load More Notifications
+              </button>
+            )}
+            
+            {status === "LoadingMore" && (
+              <div className="mt-4 py-4 text-center text-xs font-semibold text-muted-foreground animate-pulse">
+                Fetching more...
+              </div>
+            )}
           </div>
         )}
       </div>

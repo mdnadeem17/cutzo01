@@ -18,6 +18,9 @@ interface Props {
   onStartBooking: (id: string, otp: number) => Promise<void>;
   onCompleteBooking: (id: string) => void;
   onCancelBooking: (id: string) => void;
+  canLoadMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 const tabs: { id: FilterTab; label: string; color: string }[] = [
@@ -71,6 +74,9 @@ export default function BookingsScreen({
   onStartBooking,
   onCompleteBooking,
   onCancelBooking,
+  canLoadMore = false,
+  isLoadingMore = false,
+  onLoadMore = () => {},
 }: Props) {
   const [activeTab, setActiveTab] = useState<FilterTab>("pending");
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
@@ -368,6 +374,18 @@ export default function BookingsScreen({
               ))
             )}
           </AnimatePresence>
+
+          {canLoadMore && (
+            <motion.button
+              whileTap={{ scale: 0.98 }}
+              onClick={onLoadMore}
+              disabled={isLoadingMore}
+              className="mt-2 w-full rounded-[20px] border border-dashed border-primary/30 bg-white/50 py-4 text-xs font-bold uppercase tracking-widest text-primary hover:bg-white active:scale-95 transition-all disabled:opacity-50"
+            >
+              {isLoadingMore ? "Loading More..." : "Load More Bookings"}
+            </motion.button>
+          )}
+
         </div>
       </div>
 

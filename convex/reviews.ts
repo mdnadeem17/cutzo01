@@ -47,10 +47,10 @@ export const submitReview = mutation({
     // customers table, we use a workaround: store in the bookings record as metadata
     // and update shop rating directly.
 
-    // Update shop rating atomically
-    const newTotalReviews = shop.totalReviews + 1;
-    const newRating =
-      (shop.rating * shop.totalReviews + args.rating) / newTotalReviews;
+    // Update shop rating atomically using sum-based averaging to prevent drift
+    const newTotalReviews = (shop.totalReviews || 0) + 1;
+    const newTotalSum = (shop.totalRatingSum || (shop.rating * shop.totalReviews)) + args.rating;
+    const newRating = newTotalSum / newTotalReviews;
 
     // Actually insert the universal review doc
     await ctx.db.insert("reviews", {
@@ -66,6 +66,7 @@ export const submitReview = mutation({
     await ctx.db.patch(args.shopId, {
       rating: Math.round(newRating * 10) / 10,
       totalReviews: newTotalReviews,
+      totalRatingSum: newTotalSum,
     });
 
     // Mark the booking as reviewed (store rating in completedAt field, or patch status)
@@ -147,12 +148,14 @@ export const addReview = mutation({
     const shop = await ctx.db.get(args.shopId);
     if (!shop) throw new Error("Shop not found");
 
-    const newTotalReviews = shop.totalReviews + 1;
-    const newRating = (shop.rating * shop.totalReviews + args.rating) / newTotalReviews;
+    const newTotalReviews = (shop.totalReviews || 0) + 1;
+    const newTotalSum = (shop.totalRatingSum || (shop.rating * shop.totalReviews)) + args.rating;
+    const newRating = newTotalSum / newTotalReviews;
 
     await ctx.db.patch(args.shopId, {
       rating: Math.round(newRating * 10) / 10,
       totalReviews: newTotalReviews,
+      totalRatingSum: newTotalSum,
     });
 
     return reviewId;

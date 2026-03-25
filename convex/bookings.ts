@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { isPastTime, isDuring } from "./utils";
 import { checkRateLimit } from "./rateLimit";
+import { paginationOptsValidator } from "convex/server";
 
 // Create a new booking
 export const createBooking = mutation({
@@ -70,27 +71,39 @@ export const createBooking = mutation({
     // ── 2. Check and allocate slot capacity ────────────────────────────────
     const maxCapacity = shop.maxBookingsPerSlot || 1;
 
-    const existingSlot = await ctx.db
+    // Use the bookings table as the source of truth for atomic capacity checks.
+    // Convex tracks the read of this index range, so concurrent inserts will trigger OCC retries.
+    const existingBookings = await ctx.db
+      .query("bookings")
+      .withIndex("by_shop_date_time", (q) => 
+        q.eq("shopId", args.shopId).eq("date", args.date).eq("time", args.time)
+      )
+      .filter((q) => q.neq(q.field("status"), "cancelled"))
+      .collect();
+
+    if (existingBookings.length >= maxCapacity) {
+      throw new Error("Slot Full: Overbooking prevented. This time slot is no longer available.");
+    }
+
+    // Sync slotBookings summary table (for dashboard performance)
+    const slotSummary = await ctx.db
       .query("slotBookings")
       .withIndex("by_shop_date_time", (q) => 
         q.eq("shopId", args.shopId).eq("date", args.date).eq("time", args.time)
       )
       .first();
 
-    if (!existingSlot) {
+    if (!slotSummary) {
       await ctx.db.insert("slotBookings", {
         shopId: args.shopId,
         date: args.date,
         time: args.time,
-        bookedCount: 1,
+        bookedCount: existingBookings.length + 1,
         maxCount: maxCapacity,
       });
     } else {
-      if (existingSlot.bookedCount >= existingSlot.maxCount) {
-        throw new Error("Slot Full: Overbooking prevented. This time slot is no longer available.");
-      }
-      await ctx.db.patch(existingSlot._id, {
-        bookedCount: existingSlot.bookedCount + 1,
+      await ctx.db.patch(slotSummary._id, {
+        bookedCount: existingBookings.length + 1,
       });
     }
 
@@ -144,21 +157,24 @@ export const createBooking = mutation({
 export const getBookingsByCustomer = query({
   args: {
     customerId: v.string(),
+    paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Unauthenticated");
     if (identity.subject !== args.customerId) throw new Error("Unauthorized");
 
-    if (!args.customerId) return [];
-    const bookings = await ctx.db
+    if (!args.customerId) return { page: [], isDone: true, continueCursor: "" };
+    
+    const results = await ctx.db
       .query("bookings")
-      .filter((q) => q.eq(q.field("customerId"), args.customerId))
-      .collect();
+      .withIndex("by_customer", (q) => q.eq("customerId", args.customerId))
+      .order("desc") // newest first (by date/time in index)
+      .paginate(args.paginationOpts);
 
     // Enrich with shop details for display
-    const enriched = await Promise.all(
-      bookings.map(async (booking) => {
+    const enrichedPage = await Promise.all(
+      results.page.map(async (booking) => {
         const shop = await ctx.db.get(booking.shopId);
         return {
           ...booking,
@@ -176,12 +192,7 @@ export const getBookingsByCustomer = query({
       })
     );
 
-    // Sort newest first
-    return enriched.sort((a, b) => {
-      const aTime = new Date(a.date + "T" + a.time).getTime() || 0;
-      const bTime = new Date(b.date + "T" + b.time).getTime() || 0;
-      return bTime - aTime;
-    });
+    return { ...results, page: enrichedPage };
   },
 });
 
@@ -189,12 +200,15 @@ export const getBookingsByCustomer = query({
 export const getShopBookingsByOwnerId = query({
   args: {
     ownerId: v.string(),
+    paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Unauthenticated");
 
-    if (!args.ownerId) return [];
+    if (!args.ownerId) {
+      return { page: [], isDone: true, continueCursor: "" };
+    }
 
     // Find the shop by ownerId
     const shop = await ctx.db
@@ -202,7 +216,9 @@ export const getShopBookingsByOwnerId = query({
       .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
       .first();
 
-    if (!shop) return [];
+    if (!shop) {
+      return { page: [], isDone: true, continueCursor: "" };
+    }
     
     // Authorization check
     if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
@@ -214,13 +230,14 @@ export const getShopBookingsByOwnerId = query({
       // For now, we allow access to prevent the app-crash.
     }
 
-    const bookings = await ctx.db
+    const results = await ctx.db
       .query("bookings")
-      .filter((q) => q.eq(q.field("shopId"), shop._id))
-      .collect();
+      .withIndex("by_shop", (q) => q.eq("shopId", shop._id))
+      .order("desc") // newest first
+      .paginate(args.paginationOpts);
 
     // Map to VendorBooking shape
-    return bookings.map((b) => ({
+    const vendorPage = results.page.map((b) => ({
       id: b._id as string,
       customerName: b.customerName ?? "Customer",
       customerPhone: b.customerPhone ?? "",
@@ -232,6 +249,8 @@ export const getShopBookingsByOwnerId = query({
       otp: b.otp,
       otpVerified: b.otpVerified,
     }));
+
+    return { ...results, page: vendorPage };
   },
 });
 
@@ -257,7 +276,7 @@ export const getUserBookings = query({
 export const getShopBookings = query({
   args: {
     shopId: v.id("shops"),
-    callerOwnerId: v.string(),
+    paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -274,8 +293,9 @@ export const getShopBookings = query({
 
     return await ctx.db
       .query("bookings")
-      .filter((q) => q.eq(q.field("shopId"), args.shopId))
-      .collect();
+      .withIndex("by_shop", (q) => q.eq("shopId", args.shopId))
+      .order("desc")
+      .paginate(args.paginationOpts);
   },
 });
 
@@ -439,9 +459,10 @@ export const cancelBooking = mutation({
       throw new Error("Must provide credentials.");
     }
 
+    // ── 3. Update Status ──────────────────────────────────────────────
     await ctx.db.patch(args.bookingId, { status: "cancelled" });
 
-    // ── RELEASE SLOT ──
+    // ── 4. Sync Slot Summary ──────────────────────────────────────────
     const slot = await ctx.db
       .query("slotBookings")
       .withIndex("by_shop_date_time", (q) => 
@@ -449,8 +470,17 @@ export const cancelBooking = mutation({
       )
       .first();
     
-    if (slot && slot.bookedCount > 0) {
-      await ctx.db.patch(slot._id, { bookedCount: slot.bookedCount - 1 });
+    if (slot) {
+      // Re-calculate the actual count from the bookings table
+      const actualCount = await ctx.db
+        .query("bookings")
+        .withIndex("by_shop_date_time", (q) => 
+          q.eq("shopId", booking.shopId).eq("date", booking.date).eq("time", booking.time)
+        )
+        .filter((q) => q.neq(q.field("status"), "cancelled"))
+        .collect();
+      
+      await ctx.db.patch(slot._id, { bookedCount: actualCount.length });
     }
 
     if (args.callerOwnerId && booking.customerId) {
@@ -524,39 +554,58 @@ export const rescheduleBooking = mutation({
     }
     if (isBlocked) throw new Error("The new date is blocked by the shop.");
 
-    // Decrement old slot count
-    const oldSlot = await ctx.db
-      .query("slotBookings")
-      .withIndex("by_shop_date_time", (q) =>
-        q.eq("shopId", booking.shopId).eq("date", booking.date).eq("time", booking.time)
-      )
-      .first();
-    if (oldSlot && oldSlot.bookedCount > 0) {
-      await ctx.db.patch(oldSlot._id, { bookedCount: oldSlot.bookedCount - 1 });
-    }
-
     // Allocate new slot
     const maxCapacity = shop.maxBookingsPerSlot || 1;
-    const newSlot = await ctx.db
+    
+    // Check actual capacity in the new slot
+    const newSlotBookings = await ctx.db
+      .query("bookings")
+      .withIndex("by_shop_date_time", (q) =>
+        q.eq("shopId", booking.shopId).eq("date", args.newDate).eq("time", args.newTime)
+      )
+      .filter((q) => q.neq(q.field("status"), "cancelled"))
+      .collect();
+
+    if (newSlotBookings.length >= maxCapacity) {
+      throw new Error("The new time slot is already full.");
+    }
+
+    // Sync NEW slot summary
+    const newSlotSummary = await ctx.db
       .query("slotBookings")
       .withIndex("by_shop_date_time", (q) =>
         q.eq("shopId", booking.shopId).eq("date", args.newDate).eq("time", args.newTime)
       )
       .first();
 
-    if (!newSlot) {
+    if (!newSlotSummary) {
       await ctx.db.insert("slotBookings", {
         shopId: booking.shopId,
         date: args.newDate,
         time: args.newTime,
-        bookedCount: 1,
+        bookedCount: newSlotBookings.length + 1,
         maxCount: maxCapacity,
       });
     } else {
-      if (newSlot.bookedCount >= newSlot.maxCount) {
-        throw new Error("The new time slot is already full.");
-      }
-      await ctx.db.patch(newSlot._id, { bookedCount: newSlot.bookedCount + 1 });
+      await ctx.db.patch(newSlotSummary._id, { bookedCount: newSlotBookings.length + 1 });
+    }
+
+    // Sync OLD slot summary (decrement)
+    const oldSlotSummary = await ctx.db
+      .query("slotBookings")
+      .withIndex("by_shop_date_time", (q) =>
+        q.eq("shopId", booking.shopId).eq("date", booking.date).eq("time", booking.time)
+      )
+      .first();
+    if (oldSlotSummary) {
+      const oldSlotBookings = await ctx.db
+        .query("bookings")
+        .withIndex("by_shop_date_time", (q) =>
+          q.eq("shopId", booking.shopId).eq("date", booking.date).eq("time", booking.time)
+        )
+        .filter((q) => q.neq(q.field("status"), "cancelled") && q.neq(q.field("_id"), args.bookingId))
+        .collect();
+      await ctx.db.patch(oldSlotSummary._id, { bookedCount: oldSlotBookings.length });
     }
 
     await ctx.db.patch(args.bookingId, {

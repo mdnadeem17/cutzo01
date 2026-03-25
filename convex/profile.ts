@@ -109,8 +109,13 @@ export const seedOffers = mutation({
 
 // ─── NOTIFICATIONS ───────────────────────────────────────────────────────
 
+import { paginationOptsValidator } from "convex/server";
+
 export const getUserNotifications = query({
-  args: { userId: v.string() },
+  args: { 
+    userId: v.string(),
+    paginationOpts: paginationOptsValidator,
+  },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Unauthenticated");
@@ -119,8 +124,8 @@ export const getUserNotifications = query({
     return await ctx.db
       .query("notifications")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .order("desc") // newest first if supported, else array reverse in frontend
-      .collect();
+      .order("desc") // newest first
+      .paginate(args.paginationOpts);
   },
 });
 

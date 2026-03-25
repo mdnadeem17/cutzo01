@@ -28,7 +28,7 @@ import ValueScreen from "@/components/trimo/ValueScreen";
 import { clearCustomerSession, getActiveCustomer } from "@/components/trimo/authStorage";
 import { CustomerRecord, Review, Screen, Service, Shop } from "@/components/trimo/types";
 import ShopOwnerPortal from "@/components/vendor/ShopOwnerPortal";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import { formatError } from "@/lib/errorUtils";
@@ -176,11 +176,16 @@ function AppInner() {
       handler.then((h) => h.remove());
     };
   }, [screen]);
-  // ── Live customer bookings from Convex ──────────────────────────────────
-  const convexBookingsRaw = useQuery(
+  // ── Live customer bookings from Convex (Paginated) ───────────────────────
+  const { results: convexBookingsRaw, status: bookingsStatus, loadMore: loadMoreBookings } = usePaginatedQuery(
     api.bookings.getBookingsByCustomer,
-    customer ? { customerId: customer.userId } : "skip"
+    customer ? { customerId: customer.userId } : "skip",
+    { initialNumItems: 10 }
   );
+
+  const bookingsLoading = bookingsStatus === "LoadingFirstPage";
+  const canLoadMoreBookings = bookingsStatus === "CanLoadMore";
+  const isLoadingMoreBookings = bookingsStatus === "LoadingMore";
 
   // Map to local Booking type for ActivityScreen
   const customerBookings: any[] = (convexBookingsRaw ?? []).map((b: any) => ({
@@ -220,6 +225,15 @@ function AppInner() {
   }));
 
   const dbBookedSlots = useQuery(api.shops.getShopBookedSlots, selectedShop ? { shopId: selectedShop.id as Id<"shops"> } : "skip");
+
+  // Fetch full shop details (relational services, etc.) only when a shop is selected
+  const fullShopDetails = useQuery(
+    api.shops.getShopById,
+    selectedShop ? { shopId: selectedShop.id as Id<"shops"> } : "skip"
+  );
+
+  // The local 'effectiveShop' uses the full data if available, otherwise falls back to the list summary
+  const effectiveShop = (fullShopDetails as any) || selectedShop;
 
   const reservedSlots = selectedShop && dbBookedSlots
     ? dbBookedSlots.reduce<Record<string, Record<string, number>>>((accumulator, slot) => {
@@ -396,19 +410,19 @@ function AppInner() {
             />
           )}
 
-          {screen === "shopDetail" && selectedShop && (
+          {screen === "shopDetail" && effectiveShop && (
             <ShopDetailScreen
-              shop={selectedShop}
+              shop={effectiveShop}
               reviews={reviews}
               onBack={() => navigateTo("home", "back")}
               onBookNow={handleBookNow}
             />
           )}
 
-          {screen === "serviceSelect" && selectedShop && (
+          {screen === "serviceSelect" && effectiveShop && (
             <ServiceSelectionScreen
-              shopName={selectedShop.name}
-              services={selectedShop.services}
+              shopName={effectiveShop.name}
+              services={effectiveShop.services}
               selected={selectedServices}
               onToggle={handleServiceToggle}
               onBack={() => navigateTo("shopDetail", "back")}
@@ -416,10 +430,10 @@ function AppInner() {
             />
           )}
 
-          {screen === "timeSelect" && selectedShop && (
+          {screen === "timeSelect" && effectiveShop && (
             <TimeSelectionScreen
-              shopId={selectedShop.id}
-              shopName={selectedShop.name}
+              shopId={effectiveShop.id}
+              shopName={effectiveShop.name}
               totalPrice={selectedServices.reduce((acc, service) => acc + service.price, 0)}
               onBack={() => navigateTo("serviceSelect", "back")}
               onContinue={(date, time) => {
@@ -430,9 +444,9 @@ function AppInner() {
             />
           )}
 
-          {screen === "confirmation" && selectedShop && customer && (
+          {screen === "confirmation" && effectiveShop && customer && (
             <BookingConfirmationScreen
-              shop={selectedShop}
+              shop={effectiveShop}
               services={selectedServices}
               date={selectedDate}
               time={selectedTime}
@@ -482,7 +496,10 @@ function AppInner() {
           {screen === "activity" && (
             <ActivityScreen
               bookings={customerBookings}
-              bookingsLoading={convexBookingsRaw === undefined && !!customer}
+              bookingsLoading={bookingsLoading}
+              canLoadMore={canLoadMoreBookings}
+              isLoadingMore={isLoadingMoreBookings}
+              onLoadMore={() => loadMoreBookings(10)}
               reviews={reviews}
               onSubmitReview={handleSubmitReview}
               onGoHome={() => navigateTo("home", "back")}
