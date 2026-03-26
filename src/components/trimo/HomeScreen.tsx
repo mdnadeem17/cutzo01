@@ -19,7 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState, useRef } from "react";
-import { useQuery } from "convex/react";
+import { useQuery, usePaginatedQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { App } from "@capacitor/app";
 import useEmblaCarousel from "embla-carousel-react";
