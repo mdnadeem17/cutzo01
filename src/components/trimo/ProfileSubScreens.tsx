@@ -176,7 +176,7 @@ export function OffersScreen({ city, onBack }: { city: string; onBack: () => voi
 // ─── Personal Info Screen ──────────────────────────────────────────────────
 
 export function PersonalInfoScreen({ userId, onBack }: { userId: string; onBack: () => void }) {
-  const customerList = useQuery(api.customers.getCustomerByFirebaseUid, { firebaseUid: userId });
+  const customerList = useQuery(api.users.getUserByUid, { uid: userId });
   // Note: we can map customer uid to customer table format. The earlier app version used CustomerRecord in local storage.
   // We'll trust local storage user object if convex fails, but display what Convex returns.
   
