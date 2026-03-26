@@ -61,6 +61,13 @@ export const getSavedShops = query({
 export const removeSavedShop = mutation({
   args: { savedId: v.id("savedShops") },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
+    const saved = await ctx.db.get(args.savedId);
+    if (!saved) throw new Error("Saved shop not found");
+    if (saved.userId !== identity.subject) throw new Error("Unauthorized");
+
     await ctx.db.delete(args.savedId);
   },
 });
@@ -157,6 +164,13 @@ export const seedNotifications = mutation({
 export const markNotificationRead = mutation({
   args: { notificationId: v.id("notifications") },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
+    const notification = await ctx.db.get(args.notificationId);
+    if (!notification) throw new Error("Notification not found");
+    if (notification.userId !== identity.subject) throw new Error("Unauthorized");
+
     await ctx.db.patch(args.notificationId, { isRead: true });
   },
 });
@@ -164,6 +178,13 @@ export const markNotificationRead = mutation({
 export const deleteNotification = mutation({
   args: { notificationId: v.id("notifications") },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
+    const notification = await ctx.db.get(args.notificationId);
+    if (!notification) throw new Error("Notification not found");
+    if (notification.userId !== identity.subject) throw new Error("Unauthorized");
+
     await ctx.db.delete(args.notificationId);
   },
 });

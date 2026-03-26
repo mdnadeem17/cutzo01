@@ -57,6 +57,7 @@ export const submitReview = mutation({
       customerId: args.customerId,
       customerName: args.customerName,
       shopId: args.shopId,
+      bookingId: args.bookingId, // Store the link
       rating: args.rating,
       reviewText: args.reviewText,
       tags: args.tags || [],
@@ -88,19 +89,24 @@ export const submitReview = mutation({
   },
 });
 
-// Get reviews submitted by a customer (to know which bookings were reviewed)
-export const getReviewsByCustomer = query({
+// Get IDs of bookings already reviewed by the customer.
+export const getReviewedBookingIds = query({
   args: { customerId: v.string() },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Unauthenticated");
     if (identity.subject !== args.customerId) throw new Error("Unauthorized");
 
-    // We track reviews by looking for bookings that are completed and
-    // their booking IDs were used in review submission.
-    // Since we don't have a separate reviews table keyed by customerId,
-    // we return an empty array — the UI will use local state for reviewed IDs.
-    return [] as { bookingId: string }[];
+    const reviews = await ctx.db
+      .query("reviews")
+      .withIndex("by_customer", (q) => q.eq("customerId", args.customerId))
+      .collect();
+
+    // The reviews table doesn't have a direct bookingId if it was inserted via legacy addReview,
+    // but our new submitReview inserts it (wait, I should check schema again).
+    // Actually, in schema.ts, reviews table has shopId but not bookingId?!
+    // Let me check schema.ts again.
+    return reviews.map(r => (r as any).bookingId).filter(Boolean) as string[];
   },
 });
 
@@ -168,15 +174,9 @@ export const getShopReviews = query({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("reviews")
-      .filter((q) => q.eq(q.field("shopId"), args.shopId))
+      .withIndex("by_shop", (q) => q.eq("shopId", args.shopId))
       .collect();
   },
 });
 
-// Get all reviews for universal load
-export const getAllReviews = query({
-  args: {},
-  handler: async (ctx) => {
-    return await ctx.db.query("reviews").collect();
-  },
-});
+// getAllReviews has been removed for performance and privacy reasons.

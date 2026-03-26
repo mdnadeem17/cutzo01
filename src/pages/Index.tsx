@@ -3,6 +3,7 @@ import type { ErrorInfo, ReactNode } from "react";
 import { App } from "@capacitor/app";
 import { auth } from "../lib/firebase";
 import { AnimatePresence, motion } from "framer-motion";
+import { toast } from "sonner";
 import ActivityScreen from "@/components/trimo/ActivityScreen";
 import BookingConfirmationScreen from "@/components/trimo/BookingConfirmationScreen";
 import BottomNav from "@/components/trimo/BottomNav";
@@ -212,19 +213,17 @@ function AppInner() {
     (booking) => booking.status === "pending" || booking.status === "confirmed" || booking.status === "active"
   ).length;
 
-  const dbReviewsRaw = useQuery(api.reviews.getAllReviews);
-  const reviews: Review[] = (dbReviewsRaw || []).map((r: any) => ({
-    reviewId: r._id as string,
-    userId: r.customerId || r.userId || "Anonymous",
-    customerName: r.customerName || "Anonymous",
-    shopId: r.shopId,
-    rating: r.rating,
-    reviewText: r.reviewText,
-    tags: r.tags || [],
-    createdAt: r.createdAt ? new Date(Number(r.createdAt)).toISOString() : new Date().toISOString()
-  }));
+  const reviewedBookingIdsRaw = useQuery(
+    api.reviews.getReviewedBookingIds,
+    customer ? { customerId: customer.userId } : "skip"
+  );
+  const reviewedBookingIds = new Set(reviewedBookingIdsRaw || []);
 
-  const dbBookedSlots = useQuery(api.shops.getShopBookedSlots, selectedShop ? { shopId: selectedShop.id as Id<"shops"> } : "skip");
+  const today = new Date().toISOString().split("T")[0];
+  const dbBookedSlots = useQuery(
+    api.shops.getShopBookedSlots,
+    selectedShop ? { shopId: selectedShop.id as Id<"shops">, fromDate: today } : "skip"
+  );
 
   // Fetch full shop details (relational services, etc.) only when a shop is selected
   const fullShopDetails = useQuery(
@@ -413,7 +412,6 @@ function AppInner() {
           {screen === "shopDetail" && effectiveShop && (
             <ShopDetailScreen
               shop={effectiveShop}
-              reviews={reviews}
               onBack={() => navigateTo("home", "back")}
               onBookNow={handleBookNow}
             />
@@ -474,7 +472,7 @@ function AppInner() {
                   setConfirmedBooking({ ...booking, id: bookingId, otp });
                   navigateTo("success");
                 } catch (error: any) {
-                  alert(error.message || "Failed to book slot. It might be full already.");
+                  toast.error(error.message || "Failed to book slot. It might be full already.");
                 }
               }}
             />
@@ -500,7 +498,7 @@ function AppInner() {
               canLoadMore={canLoadMoreBookings}
               isLoadingMore={isLoadingMoreBookings}
               onLoadMore={() => loadMoreBookings(10)}
-              reviews={reviews}
+              reviewedBookingIds={reviewedBookingIds}
               onSubmitReview={handleSubmitReview}
               onGoHome={() => navigateTo("home", "back")}
               onCancelBooking={async (bookingId) => {
@@ -511,7 +509,7 @@ function AppInner() {
                     callerCustomerId: customer.userId,
                   });
                 } catch (err: any) {
-                  alert(err.message ?? "Failed to cancel booking.");
+                  toast.error(err.message ?? "Failed to cancel booking.");
                 }
               }}
               onRescheduleBooking={async (bookingId, newDate, newTime) => {
@@ -524,7 +522,7 @@ function AppInner() {
                     callerCustomerId: customer.userId,
                   });
                 } catch (err: any) {
-                  alert(err.message ?? "Failed to reschedule booking.");
+                  toast.error(err.message ?? "Failed to reschedule booking.");
                 }
               }}
             />

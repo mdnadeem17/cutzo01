@@ -21,7 +21,7 @@ interface Props {
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
   onGoHome: () => void;
-  reviews: Review[];
+  reviewedBookingIds: Set<string>;
   onSubmitReview: (review: Omit<Review, "reviewId" | "createdAt">) => void;
   onCancelBooking: (bookingId: string) => Promise<void>; // Convex mutation
   onRescheduleBooking: (bookingId: string, newDate: string, newTime: string) => Promise<void>; // Convex mutation
@@ -731,7 +731,7 @@ export default function ActivityScreen({
   isLoadingMore = false,
   onLoadMore = () => {},
   onGoHome,
-  reviews,
+  reviewedBookingIds,
   onSubmitReview,
   onCancelBooking,
   onRescheduleBooking,
@@ -751,10 +751,7 @@ export default function ActivityScreen({
   );
   const list = activeTab === "upcoming" ? upcoming : past;
 
-  const reviewedIds = useMemo(
-    () => new Set(reviews.map((r) => r.bookingId).filter(Boolean)),
-    [reviews]
-  );
+  const reviewedIds = reviewedBookingIds;
 
   // ── Actions ──────────────────────────────────────────────────────────────
 

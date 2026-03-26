@@ -85,6 +85,10 @@ export const createBooking = mutation({
       throw new Error("Slot Full: Overbooking prevented. This time slot is no longer available.");
     }
 
+    if (existingBookings.some(b => b.customerId === args.customerId)) {
+      throw new Error("You already have a booking for this slot.");
+    }
+
     // Sync slotBookings summary table (for dashboard performance)
     const slotSummary = await ctx.db
       .query("slotBookings")
@@ -222,12 +226,7 @@ export const getShopBookingsByOwnerId = query({
     
     // Authorization check
     if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
-      // Lenient check for legacy "owner-*" IDs during migration
-      if (!shop.firebaseUid.startsWith("owner-")) {
-        throw new Error(`Unauthorized (Shop UID: ${shop.firebaseUid} !== Token: ${identity.subject})`);
-      }
-      // If it IS a legacy ID, we allow the query but we should ideally update it in an upsert.
-      // For now, we allow access to prevent the app-crash.
+      throw new Error(`Unauthorized (Shop UID: ${shop.firebaseUid} !== Token: ${identity.subject})`);
     }
 
     const results = await ctx.db
@@ -286,9 +285,7 @@ export const getShopBookings = query({
     if (!shop) throw new Error("Shop not found");
     
     if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
-      if (!shop.firebaseUid.startsWith("owner-")) {
-        throw new Error("Unauthorized access to shop bookings");
-      }
+      throw new Error("Unauthorized access to shop bookings");
     }
 
     return await ctx.db
@@ -318,9 +315,7 @@ export const acceptBooking = mutation({
     if (!shop) throw new Error("Shop not found");
     
     if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
-      if (!shop.firebaseUid.startsWith("owner-")) {
-        throw new Error("Unauthorized: you can only accept bookings for your own shop.");
-      }
+      throw new Error("Unauthorized: you can only accept bookings for your own shop.");
     }
 
     await ctx.db.patch(args.bookingId, { status: "confirmed" });
@@ -357,9 +352,17 @@ export const verifyBookingOtp = mutation({
     if (!shop) throw new Error("Shop not found");
     
     if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
-      if (!shop.firebaseUid.startsWith("owner-")) {
-        throw new Error("Unauthorized to verify OTP for this shop.");
-      }
+      throw new Error("Unauthorized to verify OTP for this shop.");
+    }
+
+    // 1. Rate limit check (max 5 attempts per 10 mins per booking)
+    // We use the bookingId as the unique key for rate limiting this specific OTP.
+    await checkRateLimit(ctx, args.bookingId as string, "otpVerify", 5, 10 * 60 * 1000);
+
+    // 2. Expiry check (30 mins)
+    const thirtyMinutes = 30 * 60 * 1000;
+    if (booking.otpCreatedAt && Date.now() - booking.otpCreatedAt > thirtyMinutes) {
+      throw new Error("OTP has expired. Please request a new one.");
     }
 
     if (booking.otp !== args.otp) {
@@ -402,9 +405,7 @@ export const completeBooking = mutation({
     if (!shop) throw new Error("Shop not found");
     
     if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
-      if (!shop.firebaseUid.startsWith("owner-")) {
-        throw new Error("Unauthorized to complete booking for this shop.");
-      }
+      throw new Error("Unauthorized to complete booking for this shop.");
     }
 
     await ctx.db.patch(args.bookingId, {
@@ -437,10 +438,7 @@ export const cancelBooking = mutation({
     
     // Check caller matching token
     if (args.callerOwnerId && identity.subject !== args.callerOwnerId) {
-      // Lenient for legacy IDs
-      if (!args.callerOwnerId.startsWith("owner-")) {
-        throw new Error("Unauthorized");
-      }
+      throw new Error("Unauthorized");
     }
 
     const booking = await ctx.db.get(args.bookingId);
@@ -454,6 +452,9 @@ export const cancelBooking = mutation({
     } else if (args.callerCustomerId) {
       if (booking.customerId !== args.callerCustomerId) {
         throw new Error("Unauthorized.");
+      }
+      if (!["pending", "confirmed"].includes(booking.status)) {
+        throw new Error(`Cannot cancel a booking that is ${booking.status}.`);
       }
     } else {
       throw new Error("Must provide credentials.");
@@ -612,6 +613,32 @@ export const rescheduleBooking = mutation({
       date: args.newDate,
       time: args.newTime,
     });
+
+    // ── NOTIFY OWNER AND CUSTOMER ──
+    try {
+      // 1. Notify Owner
+      await ctx.db.insert("notifications", {
+        userId: shop.ownerId,
+        title: "Booking Rescheduled",
+        message: `${booking.customerName} rescheduled their appointment to ${args.newDate} at ${args.newTime}.`,
+        type: "booking_update",
+        isRead: false,
+        createdAt: Date.now(),
+      });
+
+      // 2. Notify Customer
+      await ctx.db.insert("notifications", {
+        userId: booking.customerId,
+        title: "Reschedule Confirmed",
+        message: `Your appointment at ${shop.shopName} has been moved to ${args.newDate} at ${args.newTime}.`,
+        type: "booking_update",
+        isRead: false,
+        createdAt: Date.now(),
+      });
+    } catch (e) {
+      // non-critical
+    }
+
     return true;
   },
 });

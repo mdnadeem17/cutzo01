@@ -118,11 +118,14 @@ export default defineSchema({
     customerId: v.optional(v.string()), // Firebase UID
     customerName: v.optional(v.string()),
     shopId: v.id("shops"),
+    bookingId: v.optional(v.id("bookings")), // Linked booking
     rating: v.number(),
     reviewText: v.string(),
     tags: v.optional(v.array(v.string())),
     createdAt: v.optional(v.number()),
-  }),
+  }).index("by_shop", ["shopId"])
+    .index("by_customer", ["customerId"])
+    .index("by_booking", ["bookingId"]),
 
   slotBookings: defineTable({
     shopId: v.id("shops"),

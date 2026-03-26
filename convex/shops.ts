@@ -9,7 +9,9 @@ export const getShops = query({
   handler: async (ctx) => {
     const shops = await ctx.db
       .query("shops")
-      .filter((q) => q.eq(q.field("isActive"), true))
+      .filter((q) =>
+        q.and(q.eq(q.field("isActive"), true), q.eq(q.field("status"), "approved"))
+      )
       .collect();
     
     // Map denormalized summary to services field for O(1) listing performance
@@ -34,10 +36,7 @@ export const getShopsByOwner = query({
       
     // Enforce RLS on returned shops
     const authorizedShops = shops.filter(s => {
-      if (!s.firebaseUid) return true;
       if (s.firebaseUid === identity.subject) return true;
-      // Lenient check for legacy "owner-*" IDs
-      if (s.firebaseUid.startsWith("owner-")) return true;
       return false;
     });
     if (shops.length > 0 && authorizedShops.length === 0) throw new Error("Unauthorized");
@@ -66,7 +65,9 @@ export const getTrendingShops = query({
   handler: async (ctx) => {
     const shops = await ctx.db
       .query("shops")
-      .filter((q) => q.eq(q.field("isActive"), true))
+      .filter((q) =>
+        q.and(q.eq(q.field("isActive"), true), q.eq(q.field("status"), "approved"))
+      )
       .collect();
 
     return shops
@@ -89,7 +90,9 @@ export const getNearbyShops = query({
   handler: async (ctx, args) => {
     const shops = await ctx.db
       .query("shops")
-      .filter((q) => q.eq(q.field("isActive"), true))
+      .filter((q) =>
+        q.and(q.eq(q.field("isActive"), true), q.eq(q.field("status"), "approved"))
+      )
       .collect();
 
     const R = 6371; // Radius of the Earth in km
@@ -177,10 +180,7 @@ export const upsertShop = mutation({
 
     if (existing) {
       if (existing.firebaseUid && existing.firebaseUid !== identity.subject) {
-        // Lenient check for legacy "owner-*" IDs — allow repair
-        if (!existing.firebaseUid.startsWith("owner-")) {
-          throw new Error("Unauthorized to modify this shop");
-        }
+        throw new Error("Unauthorized to modify this shop");
       }
     } else {
       if (args.firebaseUid && args.firebaseUid !== identity.subject) {
@@ -364,14 +364,17 @@ export const getImageUrl = mutation({
 export const getShopBookedSlots = query({
   args: {
     shopId: v.id("shops"),
+    fromDate: v.optional(v.string()), // Accept a fromDate arg (YYYY-MM-DD)
   },
   handler: async (ctx, args) => {
-    return await ctx.db
-      .query("slotBookings")
+    let query = ctx.db.query("slotBookings")
       .withIndex("by_shop_date_time", (q) => 
-        q.eq("shopId", args.shopId)
-      )
-      .collect();
+        args.fromDate 
+          ? q.eq("shopId", args.shopId).gte("date", args.fromDate)
+          : q.eq("shopId", args.shopId)
+      );
+
+    return await query.collect();
   },
 });
 
@@ -407,9 +410,7 @@ export const toggleShopStatus = mutation({
 
     if (!shop) throw new Error("Shop not found for ownerId: " + args.ownerId);
     if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
-      if (!shop.firebaseUid.startsWith("owner-")) {
-        throw new Error("Unauthorized");
-      }
+      throw new Error("Unauthorized");
     }
 
     const next = !(shop.isOpen ?? true); // default open if undefined

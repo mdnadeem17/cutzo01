@@ -14,11 +14,13 @@ import { formatDistanceToNow } from "date-fns";
 import * as React from "react";
 import { useEffect, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import { Id } from "../../../convex/_generated/dataModel";
 import { Review, Service, Shop } from "./types";
 
 interface Props {
   shop: Shop;
-  reviews: Review[];
   onBack: () => void;
   onBookNow: () => void;
 }
@@ -112,7 +114,7 @@ function ReviewCard({ review }: { review: Review }) {
   );
 }
 
-export default function ShopDetailScreen({ shop, reviews, onBack, onBookNow }: Props) {
+export default function ShopDetailScreen({ shop, onBack, onBookNow }: Props) {
   const [emblaRef, emblaApi] = useEmblaCarousel({ loop: false });
   const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -121,14 +123,25 @@ export default function ShopDetailScreen({ shop, reviews, onBack, onBookNow }: P
     emblaApi.on("select", () => setSelectedIndex(emblaApi.selectedScrollSnap()));
   }, [emblaApi]);
 
-  const shopReviews = reviews
-    .filter((review) => review.shopId === shop.id)
-    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+  // ─── Efficiently fetch shop reviews ──────────────────────────────
+  const dbReviewsRaw = useQuery(api.reviews.getShopReviews, { shopId: shop.id as Id<"shops"> });
+  const shopReviews: Review[] = React.useMemo(() => {
+    return (dbReviewsRaw || []).map((r: any) => ({
+      reviewId: r._id as string,
+      userId: r.customerId || r.userId || "Anonymous",
+      customerName: r.customerName || "Anonymous",
+      shopId: r.shopId,
+      rating: r.rating,
+      reviewText: r.reviewText,
+      tags: r.tags || [],
+      createdAt: r.createdAt ? new Date(Number(r.createdAt)).toISOString() : new Date().toISOString()
+    })).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [dbReviewsRaw]);
+  
   const totalReviewCount = shopReviews.length;
-  const averageRating =
-    totalReviewCount > 0
-      ? shopReviews.reduce((total, review) => total + review.rating, 0) / totalReviewCount
-      : 0;
+  const averageRating = totalReviewCount > 0
+    ? shopReviews.reduce((sum, r) => sum + r.rating, 0) / totalReviewCount
+    : 0;
   const ratingLabel = totalReviewCount > 0 ? averageRating.toFixed(1) : "New";
   const locationText = shop.distance.includes("km")
     ? `${shop.distance} away / ${shop.locationLabel}`
