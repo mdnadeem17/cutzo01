@@ -113,7 +113,7 @@ export default defineSchema({
     completedAt: v.optional(v.string())
   }).index("by_shop_date_time", ["shopId", "date", "time"])
     .index("by_customer", ["customerId", "date", "time"])
-    .index("by_shop", ["shopId", "date", "time"]),
+    .index("by_shop", ["shopId"]),
 
   reviews: defineTable({
     userId: v.optional(v.id("users")),
