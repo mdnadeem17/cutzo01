@@ -11,7 +11,7 @@ function GoogleIcon({ className }: { className?: string }) {
   );
 }
 import { ChangeEvent, useEffect, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { Capacitor } from '@capacitor/core';
 import { auth } from "../../lib/firebase";
@@ -113,8 +113,8 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
   const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   
-  const upsertShop = useMutation(api.shops.upsertShop);
-  const loginMutation = useMutation(api.shops.loginShopOwner);
+  const upsertShop = useAction(api.auth_actions.upsertShop);
+  const loginMutation = useAction(api.auth_actions.loginShopOwner);
 
   // Check returning shop in Convex after sign-in
   const existingShop = useQuery(

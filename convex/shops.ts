@@ -1,7 +1,6 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { timeToMins, minsToTime24, isPastTime, isDuring } from "./utils";
-import bcrypt from "bcryptjs";
 
 // Get all active shops (used by customer listing)
 export const getShops = query({
@@ -125,8 +124,8 @@ export const getNearbyShops = query({
   },
 });
 
-// Upsert a shop by ownerId — insert if new, update if existing.
-export const upsertShop = mutation({
+// Internal mutation for upserting a shop (called by auth_actions.ts)
+export const upsertShopInternal = internalMutation({
   args: {
     ownerId: v.string(),
     shopName: v.string(),
@@ -151,7 +150,7 @@ export const upsertShop = mutation({
     firebaseUid: v.optional(v.string()),
     status: v.optional(v.union(v.literal("pending"), v.literal("approved"), v.literal("rejected"))),
     username: v.optional(v.string()),
-    password: v.optional(v.string()),
+    password: v.optional(v.string()), // Hashed password passed from action
     services: v.optional(v.array(v.object({
       name: v.string(),
       price: v.number(),
@@ -163,9 +162,6 @@ export const upsertShop = mutation({
     }))),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthenticated");
-
     let existing = await ctx.db
       .query("shops")
       .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
@@ -176,22 +172,6 @@ export const upsertShop = mutation({
         .query("shops")
         .withIndex("by_phone", (q) => q.eq("phone", args.phone))
         .first();
-    }
-
-    if (existing) {
-      if (existing.firebaseUid && existing.firebaseUid !== identity.subject) {
-        throw new Error("Unauthorized to modify this shop");
-      }
-    } else {
-      if (args.firebaseUid && args.firebaseUid !== identity.subject) {
-        throw new Error("Unauthorized to create shop for another user");
-      }
-    }
-
-    // Hash password if provided and not already hashed
-    let hashedPassword = args.password;
-    if (args.password && !args.password.startsWith("$2a$")) {
-      hashedPassword = await bcrypt.hash(args.password, 10);
     }
 
     const shopData: Record<string, any> = {
@@ -214,7 +194,7 @@ export const upsertShop = mutation({
       locationLabel: args.locationLabel,
       firebaseUid: args.firebaseUid,
       ...(args.username ? { username: args.username } : {}),
-      ...(hashedPassword ? { password: hashedPassword } : {}),
+      ...(args.password ? { password: args.password } : {}),
     };
 
     const shopId = existing ? existing._id : await ctx.db.insert("shops", {
@@ -235,9 +215,7 @@ export const upsertShop = mutation({
       });
     }
 
-    // ── 1. Batch sync Services ──────────────────────────────────────────
     if (args.services) {
-      // Clean sweep (purer than managing IDs in frontend)
       const oldServices = await ctx.db
         .query("services")
         .withIndex("by_shopId", (q) => q.eq("shopId", shopId))
@@ -254,12 +232,9 @@ export const upsertShop = mutation({
         });
         summary.push({ name: s.name, price: s.price });
       }
-
-      // Update the denormalized summary for architectural performance
       await ctx.db.patch(shopId, { servicesSummary: summary });
     }
 
-    // ── 2. Batch sync Blocked Dates ─────────────────────────────────────
     if (args.blockedDates) {
       const oldBlocked = await ctx.db
         .query("blockedDates")
@@ -280,57 +255,22 @@ export const upsertShop = mutation({
   },
 });
 
-// Credentials-based login for shop owners
-export const loginShopOwner = mutation({
-  args: {
-    username: v.string(),
-    password: v.string(),
-  },
+// Internal mutation to patch shop password (called by auth_actions login for lazy migration)
+export const patchShopPassword = internalMutation({
+  args: { shopId: v.id("shops"), password: v.string() },
   handler: async (ctx, args) => {
-    const MAX_ATTEMPTS = 5;
-    const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+    await ctx.db.patch(args.shopId, { password: args.password });
+  },
+});
 
-    const shop = await ctx.db
+// Internal query to get shop by username for login comparison
+export const getShopForLogin = internalQuery({
+  args: { username: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
       .query("shops")
       .filter((q) => q.eq(q.field("username"), args.username))
       .first();
-
-    if (!shop || !shop.password) {
-      return { success: false, error: "Invalid username or password." };
-    }
-
-    let isMatch = false;
-    const storedPassword = shop.password;
-
-    // 1. Try standard bcrypt comparison
-    if (storedPassword.startsWith("$2a$")) {
-      isMatch = await bcrypt.compare(args.password, storedPassword);
-    } else {
-      // 2. Legacy plaintext comparison (Lazy Migration)
-      isMatch = storedPassword === args.password;
-      
-      if (isMatch) {
-        // Automatically upgrade to hashed password
-        const newHash = await bcrypt.hash(args.password, 10);
-        await ctx.db.patch(shop._id, { password: newHash });
-      }
-    }
-
-    if (!isMatch) {
-      return { success: false, error: "Invalid username or password." };
-    }
-
-    if (shop.status === "pending") {
-      return { success: false, error: "pending" };
-    }
-
-    if (shop.status === "rejected") {
-      return { success: false, error: "Your account has been rejected." };
-    }
-
-    // Return shop data without sensitive fields
-    const { password: _pw, username: _un, ...safeShop } = shop as any;
-    return { success: true, shop: safeShop };
   },
 });
 

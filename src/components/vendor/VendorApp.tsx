@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { App } from "@capacitor/app";
-import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { useAction, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
 import AvailabilityScreen from "./AvailabilityScreen";
@@ -104,7 +104,7 @@ export default function VendorApp({ onExit, onLogout, ownerRecord, onOwnerRecord
   const [blockedDates, setBlockedDates] = useState<BlockedDate[]>(ownerRecord?.blockedDates ?? []);
   const [profile, setProfile] = useState<VendorProfile>(createProfileFromOwner(ownerRecord));
 
-  const upsertShop = useMutation(api.shops.upsertShop);
+  const upsertShop = useAction(api.auth_actions.upsertShop);
   const acceptBookingMutation = useMutation(api.bookings.acceptBooking);
   const verifyBookingOtpMutation = useMutation(api.bookings.verifyBookingOtp);
   const completeBookingMutation = useMutation(api.bookings.completeBooking);
