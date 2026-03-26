@@ -18,8 +18,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="TRIMO" />
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
 
     <meta property="og:title" content="TRIMO" />
     <meta
@@ -27,7 +27,7 @@
       content="Find nearby barber shops, view trusted reviews, and book instantly with TRIMO."
     />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="/pwa-512.png" />
+    <meta property="og:image" content="pwa-512.png" />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="TRIMO" />
@@ -35,11 +35,26 @@
       name="twitter:description"
       content="Book barber shops near you with fixed pricing, quick slot selection, and trusted reviews."
     />
-    <meta name="twitter:image" content="/pwa-512.png" />
+    <meta name="twitter:image" content="pwa-512.png" />
+
+    <script>
+      window.onerror = function(msg, url, line, col, error) {
+        var out = document.createElement('div');
+        out.style.cssText = 'background:red;color:white;position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;padding:20px;overflow:auto;font-family:monospace;font-size:14px;';
+        out.innerHTML = '<h2>Runtime Error</h2>' +
+          '<p><b>Message:</b> ' + msg + '</p>' +
+          '<p><b>URL:</b> ' + url + '</p>' +
+          '<p><b>Line:</b> ' + line + ', <b>Col:</b> ' + col + '</p>' +
+          '<pre>' + (error && error.stack || 'No stack trace') + '</pre>' +
+          '<button onclick="location.reload()" style="padding:10px;margin-top:20px;">Reload App</button>';
+        document.body.appendChild(out);
+        return false;
+      };
+    </script>
   </head>
 
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="src/main.tsx"></script>
   </body>
 </html>
