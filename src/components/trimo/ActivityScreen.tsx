@@ -359,6 +359,8 @@ function BookingDetailsView({
               src={booking.shopImage}
               alt={booking.shopName}
               className="h-40 w-full object-cover"
+              loading="lazy"
+              onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }}
             />
           )}
           <div className="p-4">
@@ -507,7 +509,7 @@ function RescheduleView({
       </div>
 
       {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto pb-[120px]">
+      <div className="flex-1 overflow-y-auto" style={{ paddingBottom: "calc(120px + env(safe-area-inset-bottom, 0px))" }}>
 
         {/* Date Picker */}
         <div className="px-4 pt-4">
@@ -630,10 +632,8 @@ function BookingCard({
           src={booking.shopImage}
           alt={booking.shopName}
           className="h-14 w-14 shrink-0 rounded-[12px] object-cover"
-          onError={(e) => {
-            (e.target as HTMLImageElement).src =
-              "https://images.unsplash.com/photo-1585747860715-2ba37e788b70?auto=format&fit=crop&w=200&q=60";
-          }}
+          loading="lazy"
+          onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }}
         />
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex items-start justify-between gap-2">

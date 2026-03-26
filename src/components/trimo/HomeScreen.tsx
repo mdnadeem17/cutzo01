@@ -62,7 +62,13 @@ function ShopCard({ shop, onSelect }: { shop: Shop; onSelect: () => void }) {
         <div className="flex h-full touch-pan-y">
           {images.map((img, idx) => (
             <div className="relative min-w-0 flex-[0_0_100%] h-full" key={idx}>
-              <img src={img} alt={`${shop.name} ${idx + 1}`} className="h-full w-full object-cover" />
+              <img 
+                src={img} 
+                alt={`${shop.name} ${idx + 1}`} 
+                className="h-full w-full object-cover"
+                loading="lazy"
+                onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }}
+              />
             </div>
           ))}
         </div>
@@ -337,10 +343,13 @@ export default function HomeScreen({ onShopSelect, onNavigate, onLogout, custome
     }
   };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
+  const handleTouchMove = (e: TouchEvent) => {
     if (startY === 0 || (scrollRef.current && scrollRef.current.scrollTop > 0)) return;
     const currentY = e.touches[0].pageY;
     if (currentY <= startY) return; // Ignore upward swipes
+    
+    // If we are at the top and pulling down, prevent native scroll to eliminate jank
+    if (e.cancelable) e.preventDefault();
     
     const distance = currentY - startY;
     // Apply logarithmic damping for authentic native tension
@@ -348,6 +357,17 @@ export default function HomeScreen({ onShopSelect, onNavigate, onLogout, custome
     const resistantDist = maxPull * Math.log10(1 + (distance * 0.5) / maxPull);
     setPullDistance(resistantDist);
   };
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    // Register touchmove as non-passive to allow preventDefault()
+    el.addEventListener("touchmove", handleTouchMove, { passive: false });
+    return () => {
+      el.removeEventListener("touchmove", handleTouchMove);
+    };
+  }, [startY]); // Re-bind when startY changes to keep closure fresh
 
   const handleTouchEnd = () => {
     if (pullDistance > REFRESH_THRESHOLD) {
@@ -457,7 +477,7 @@ export default function HomeScreen({ onShopSelect, onNavigate, onLogout, custome
       </div>
 
       {/* Sticky Header */}
-      <div className="sticky top-0 z-20 bg-white shadow-[0_2px_10px_rgba(0,0,0,0.06)] pt-[44px] pb-[8px] px-4 flex-none safe-top">
+      <div className="sticky top-0 z-20 bg-white shadow-[0_2px_10px_rgba(0,0,0,0.06)] pb-[8px] px-4 flex-none safe-top">
         <div className="flex flex-col items-center justify-center">
           <h1 className="font-montserrat text-2xl font-bold tracking-tight text-primary leading-tight">
             TRIMO
@@ -473,7 +493,6 @@ export default function HomeScreen({ onShopSelect, onNavigate, onLogout, custome
         ref={scrollRef}
         onScroll={handleScroll}
         onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         className="flex-1 overflow-y-auto px-[16px] pt-[10px] pb-[110px] scroll-smooth"
       >

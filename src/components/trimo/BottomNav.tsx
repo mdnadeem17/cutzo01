@@ -16,8 +16,9 @@ const TABS: { id: Tab; label: string; Icon: React.ComponentType<React.SVGProps<S
 
 export default function BottomNav({ active, onTab, bookingCount = 0 }: Props) {
   return (
-    <nav className="fixed bottom-[12px] left-[12px] right-[12px] h-[65px] z-[60] rounded-[22px] bg-white pointer-events-auto transition-shadow"
+    <nav className="fixed left-[12px] right-[12px] h-[65px] z-[60] rounded-[22px] bg-white pointer-events-auto transition-shadow"
       style={{
+        bottom: "calc(12px + env(safe-area-inset-bottom, 0px))",
         boxShadow: "0 8px 30px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06)",
       }}
     >

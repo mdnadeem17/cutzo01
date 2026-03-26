@@ -143,6 +143,7 @@ function WheelPicker<T extends string | number>({
             scrollSnapType: "y mandatory",
             WebkitOverflowScrolling: "touch",
             scrollbarWidth: "none",
+            overscrollBehavior: "contain",
           }}
         >
           {/* Leading spacer */}

@@ -2,7 +2,7 @@ import { Scissors } from "lucide-react";
 
 export default function SplashScreen() {
   return (
-    <div className="splash-gradient flex flex-col items-center justify-center min-h-screen">
+    <div className="splash-gradient flex flex-col items-center justify-center min-h-screen safe-top">
       <div className="flex flex-col items-center gap-4">
         {/* Logo mark */}
         <div className="animate-scale-in">

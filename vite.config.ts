@@ -13,10 +13,32 @@ export default defineConfig(({ mode }) => ({
       overlay: false,
     },
   },
+  define: {
+    "__BUILD_DATE__": JSON.stringify(Date.now().toString()),
+  },
   plugins: [
     react(),
     {
       name: "sw-version-replace",
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          if (req.url === "/sw.js") {
+            const swPath = path.resolve(__dirname, "public/sw.js");
+            if (fs.existsSync(swPath)) {
+              let content = fs.readFileSync(swPath, "utf-8");
+              // Replace the placeholder with a fresh timestamp on every request in dev
+              const timestamp = Date.now().toString();
+              content = content.replace("__BUILD_DATE__", timestamp);
+              
+              res.setHeader("Content-Type", "application/javascript");
+              res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+              res.end(content);
+              return;
+            }
+          }
+          next();
+        });
+      },
       closeBundle() {
         // Inject a unique build timestamp into the service worker after build
         const swPath = path.resolve(__dirname, "dist/sw.js");

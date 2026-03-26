@@ -61,7 +61,7 @@ export function SavedShopsScreen({ userId, onBack }: { userId: string; onBack: (
   return (
     <div className="flex h-[100dvh] flex-col bg-muted">
       <ScreenHeader title="Saved Shops" subtitle="Your favorite barber shops" onBack={onBack} />
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-20">
+      <div className="flex-1 overflow-y-auto px-4 pt-4" style={{ paddingBottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}>
         {localShops === undefined ? (
           <div className="py-20 text-center text-muted-foreground animate-pulse">Loading...</div>
         ) : localShops.length === 0 ? (
@@ -121,7 +121,7 @@ export function OffersScreen({ city, onBack }: { city: string; onBack: () => voi
   return (
     <div className="flex h-[100dvh] flex-col bg-muted">
       <ScreenHeader title="Offers & Coupons" subtitle={`Deals in ${city}`} onBack={onBack} />
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-20">
+      <div className="flex-1 overflow-y-auto px-4 pt-4" style={{ paddingBottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}>
         {offers === undefined ? (
           <div className="py-20 text-center text-muted-foreground animate-pulse">Loading...</div>
         ) : offers.length === 0 ? (
@@ -194,7 +194,7 @@ export function PersonalInfoScreen({ userId, onBack }: { userId: string; onBack:
   return (
     <div className="flex h-[100dvh] flex-col bg-muted">
       <ScreenHeader title="Personal Info" subtitle="Your account details" onBack={onBack} />
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-20">
+      <div className="flex-1 overflow-y-auto px-4 pt-4" style={{ paddingBottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}>
         
         <div className="overflow-hidden rounded-[18px] bg-card card-shadow mb-6">
           <div className="border-b border-border p-4">
@@ -276,7 +276,7 @@ export function NotificationsScreen({ userId, onBack }: { userId: string; onBack
   return (
     <div className="flex h-[100dvh] flex-col bg-muted">
       <ScreenHeader title="Notifications" subtitle="Updates and alerts" onBack={onBack} action={actionButton} />
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-20">
+      <div className="flex-1 overflow-y-auto px-4 pt-4" style={{ paddingBottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}>
         {status === "LoadingFirstPage" ? (
           <div className="py-20 text-center animate-pulse">Loading...</div>
         ) : (results?.length ?? 0) === 0 ? (
@@ -336,7 +336,7 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }) {
   return (
     <div className="flex h-[100dvh] flex-col bg-muted">
       <ScreenHeader title="Privacy & Security" onBack={onBack} />
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-20">
+      <div className="flex-1 overflow-y-auto px-4 pt-4" style={{ paddingBottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}>
         <div className="rounded-[18px] bg-card p-5 card-shadow">
           <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
             <Shield className="h-6 w-6 text-primary" />
@@ -362,7 +362,7 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
   return (
     <div className="flex h-[100dvh] flex-col bg-muted">
       <ScreenHeader title="Help Center" subtitle="We're here for you" onBack={onBack} />
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-20">
+      <div className="flex-1 overflow-y-auto px-4 pt-4" style={{ paddingBottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}>
         <div className="flex flex-col gap-3">
           <button className="flex items-center justify-between rounded-[16px] bg-card p-4 card-shadow scale-tap">
             <div className="flex items-center gap-3">
@@ -399,7 +399,7 @@ export function AboutScreen({ onBack }: { onBack: () => void }) {
   return (
     <div className="flex h-[100dvh] flex-col bg-muted">
       <ScreenHeader title="About TRIMO" onBack={onBack} />
-      <div className="flex-1 overflow-y-auto px-4 pt-6 pb-20 text-center">
+      <div className="flex-1 overflow-y-auto px-4 pt-6 text-center" style={{ paddingBottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}>
         <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-[24px] bg-primary card-shadow">
           <Scissors className="h-10 w-10 text-white" />
         </div>

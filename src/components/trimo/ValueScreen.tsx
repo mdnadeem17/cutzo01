@@ -8,7 +8,7 @@ interface Props {
 
 export default function ValueScreen({ onGetStarted, onOpenVendor }: Props) {
   return (
-    <div className="customer-gradient relative flex h-screen w-full flex-col overflow-hidden">
+    <div className="customer-gradient relative flex h-screen w-full flex-col overflow-hidden safe-top">
       <motion.div
         className="absolute inset-0"
         style={{

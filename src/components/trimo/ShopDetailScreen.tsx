@@ -181,7 +181,13 @@ export default function ShopDetailScreen({ shop, onBack, onBookNow }: Props) {
           <div className="flex h-full touch-pan-y">
             {images.map((img, idx) => (
               <div className="relative min-w-0 flex-[0_0_100%] h-full" key={idx}>
-                 <img src={img} alt={`${shop.name} ${idx + 1}`} className="h-full w-full object-cover" />
+                 <img 
+                    src={img} 
+                    alt={`${shop.name} ${idx + 1}`} 
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                    onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }}
+                  />
               </div>
             ))}
           </div>
@@ -332,7 +338,7 @@ export default function ShopDetailScreen({ shop, onBack, onBookNow }: Props) {
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 bg-white shadow-[0_-8px_24px_rgba(0,0,0,0.06)] px-4 py-4 z-50 rounded-t-[24px]">
+      <div className="fixed bottom-0 left-0 right-0 bg-white shadow-[0_-8px_24px_rgba(0,0,0,0.06)] px-4 py-4 z-50 rounded-t-[24px] safe-bottom">
         <div className="mx-auto flex max-w-[430px] items-center justify-between mb-3">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Next Available</p>

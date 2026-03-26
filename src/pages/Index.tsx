@@ -2,7 +2,7 @@ import { Component, useEffect, useState } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import { App } from "@capacitor/app";
 import { auth } from "../lib/firebase";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, Variants } from "framer-motion";
 import { toast } from "sonner";
 import ActivityScreen from "@/components/trimo/ActivityScreen";
 import BookingConfirmationScreen from "@/components/trimo/BookingConfirmationScreen";
@@ -94,11 +94,11 @@ const BACK_SCREENS = new Set<Screen>(["home", "splash", "value"]);
 
 const SCREEN_TRANSITION = {
   duration: 0.35,
-  ease: [0.22, 1, 0.36, 1],
+  ease: [0.22, 1, 0.36, 1] as const,
   opacity: { duration: 0.25 },
 };
 
-const screenVariants = {
+const screenVariants: Variants = {
   enter: (dir: NavDir) => ({
     opacity: 0,
     x: dir === "forward" ? "100%" : "-30%",
@@ -420,9 +420,6 @@ function AppInner() {
                 animate="center"
                 exit="exit"
                 className="col-start-1 row-start-1 w-full bg-background"
-                style={{ 
-                  willChange: "opacity, transform"
-                }}
               >
                 {screen === "splash" && <SplashScreen />}
 

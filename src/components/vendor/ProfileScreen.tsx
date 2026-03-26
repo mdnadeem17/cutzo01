@@ -180,7 +180,13 @@ export default function ProfileScreen({ ownerId, profile, onSaveProfile, onLogou
         >
           <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full bg-slate-100 shadow-sm border border-slate-200">
             {profile.images?.[0] ? (
-              <img src={profile.images[0]} alt="Shop" className="h-full w-full object-cover" />
+              <img 
+                src={profile.images[0]} 
+                alt="Shop" 
+                className="h-full w-full object-cover"
+                loading="lazy"
+                onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }}
+              />
             ) : (
               <Store className="h-6 w-6 text-slate-300 m-auto mt-5" />
             )}
@@ -256,7 +262,13 @@ export default function ProfileScreen({ ownerId, profile, onSaveProfile, onLogou
           <div className="grid grid-cols-2 gap-3">
             {profile.images?.map((url, idx) => (
               <div key={url} className="group relative aspect-square overflow-hidden rounded-[16px] bg-slate-100">
-                <img src={url} alt={`Gallery ${idx}`} className="h-full w-full object-cover" />
+                <img 
+                  src={url} 
+                  alt={`Gallery ${idx}`} 
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                  onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }}
+                />
                 
                 {/* Image Overlays */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
@@ -307,7 +319,7 @@ export default function ProfileScreen({ ownerId, profile, onSaveProfile, onLogou
              <motion.div
                initial={{ y: "100%", borderTopLeftRadius: "32px", borderTopRightRadius: "32px" }}
                animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }}
-               className="relative z-10 w-full bg-white px-6 pb-10 pt-6 shadow-2xl"
+               className="relative z-10 w-full bg-white px-6 pb-10 pt-6 shadow-2xl max-h-[90dvh] overflow-y-auto"
              >
                <div className="mx-auto mb-6 h-1.5 w-12 rounded-full bg-slate-200" />
                <div className="flex items-start justify-between gap-3 mb-6">

@@ -312,7 +312,7 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
           </p>
         </div>
 
-        <div className="space-y-4 px-5 py-5">
+        <div className="max-h-[70dvh] overflow-y-auto space-y-4 px-5 py-5">
           {step === "access" && (
             <>
               <div className="rounded-[20px] bg-muted p-4">

@@ -466,7 +466,7 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
 
       <div className="-mt-5 flex flex-1 flex-col gap-4 px-4 pb-8">
         {step === "access" && (
-          <div className="rounded-[22px] bg-card p-5 card-shadow">
+          <div className="max-h-[70dvh] overflow-y-auto rounded-[22px] bg-card p-5 card-shadow">
             <h2 className="text-sm font-bold text-foreground mb-4 uppercase tracking-wider">Existing Users</h2>
             
             <div className="flex flex-col gap-3 mb-5">
@@ -536,7 +536,7 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
         )}
 
         {step === "setup" && (
-          <div className="rounded-[22px] bg-card p-5 card-shadow">
+          <div className="max-h-[70dvh] overflow-y-auto rounded-[22px] bg-card p-5 card-shadow">
             <div className="space-y-4">
               <label className="flex flex-col gap-2">
                 <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
