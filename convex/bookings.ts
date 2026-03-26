@@ -20,6 +20,7 @@ export const createBooking = mutation({
     totalAmount: v.number(),
     date: v.string(),
     time: v.string(),
+    clientNow: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -33,7 +34,7 @@ export const createBooking = mutation({
       throw new Error("Shop not found.");
     }
 
-    const now = Date.now();
+    const now = args.clientNow ?? Date.now();
 
     // 1. Check if past time
     if (isPastTime(args.date, args.time, now)) {
@@ -225,8 +226,16 @@ export const getShopBookingsByOwnerId = query({
     }
     
     // Authorization check
+    const isLegacy = shop.firebaseUid?.startsWith("owner-");
+    const isOwnerMatch = shop.ownerId === args.ownerId;
+    
     if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
-      throw new Error(`Unauthorized (Shop UID: ${shop.firebaseUid} !== Token: ${identity.subject})`);
+      // Allow access if it's a legacy record matching the requested ownerId
+      if (isLegacy && isOwnerMatch) {
+         // Proceed (legacy migration state)
+      } else {
+        throw new Error(`[V2] Unauthorized (Shop UID: ${shop.firebaseUid} !== Token: ${identity.subject})`);
+      }
     }
 
     const results = await ctx.db
@@ -285,7 +294,10 @@ export const getShopBookings = query({
     if (!shop) throw new Error("Shop not found");
     
     if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
-      throw new Error("Unauthorized access to shop bookings");
+      const isLegacy = shop.firebaseUid.startsWith("owner-");
+      if (!(isLegacy && shop.ownerId === shop.firebaseUid)) {
+        throw new Error("Unauthorized access to shop bookings");
+      }
     }
 
     return await ctx.db
@@ -315,7 +327,10 @@ export const acceptBooking = mutation({
     if (!shop) throw new Error("Shop not found");
     
     if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
-      throw new Error("Unauthorized: you can only accept bookings for your own shop.");
+      const isLegacy = shop.firebaseUid.startsWith("owner-");
+      if (!(isLegacy && shop.ownerId === shop.firebaseUid)) {
+        throw new Error("Unauthorized: you can only accept bookings for your own shop.");
+      }
     }
 
     await ctx.db.patch(args.bookingId, { status: "confirmed" });
@@ -352,7 +367,10 @@ export const verifyBookingOtp = mutation({
     if (!shop) throw new Error("Shop not found");
     
     if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
-      throw new Error("Unauthorized to verify OTP for this shop.");
+      const isLegacy = shop.firebaseUid.startsWith("owner-");
+      if (!(isLegacy && shop.ownerId === shop.firebaseUid)) {
+        throw new Error("Unauthorized to verify OTP for this shop.");
+      }
     }
 
     // 1. Rate limit check (max 5 attempts per 10 mins per booking)
@@ -405,7 +423,10 @@ export const completeBooking = mutation({
     if (!shop) throw new Error("Shop not found");
     
     if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
-      throw new Error("Unauthorized to complete booking for this shop.");
+      const isLegacy = shop.firebaseUid.startsWith("owner-");
+      if (!(isLegacy && shop.ownerId === shop.firebaseUid)) {
+        throw new Error("Unauthorized to complete booking for this shop.");
+      }
     }
 
     await ctx.db.patch(args.bookingId, {
@@ -448,7 +469,10 @@ export const cancelBooking = mutation({
       const shop = await ctx.db.get(booking.shopId);
       if (!shop) throw new Error("Shop not found.");
       if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
-        throw new Error("Unauthorized to cancel booking for this shop.");
+        const isLegacy = shop.firebaseUid.startsWith("owner-");
+        if (!(isLegacy && shop.ownerId === shop.firebaseUid)) {
+          throw new Error("Unauthorized to cancel booking for this shop.");
+        }
       }
     } else if (args.callerCustomerId) {
       if (booking.customerId !== args.callerCustomerId) {

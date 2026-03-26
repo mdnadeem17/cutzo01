@@ -143,7 +143,7 @@ export default function ShopDetailScreen({ shop, onBack, onBookNow }: Props) {
     ? shopReviews.reduce((sum, r) => sum + r.rating, 0) / totalReviewCount
     : 0;
   const ratingLabel = totalReviewCount > 0 ? averageRating.toFixed(1) : "New";
-  const locationText = shop.distance.includes("km")
+  const locationText = (shop.distance ?? "").includes("km")
     ? `${shop.distance} away / ${shop.locationLabel}`
     : shop.locationLabel;
 
@@ -248,7 +248,7 @@ export default function ShopDetailScreen({ shop, onBack, onBookNow }: Props) {
                 </div>
               </div>
 
-              {shop.tags.length > 0 && shop.tags.slice(0, 2).map((tag) => (
+              {(shop.tags ?? []).length > 0 && (shop.tags ?? []).slice(0, 2).map((tag) => (
                 <div key={tag} className="flex items-center gap-2">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100">
                      {TAG_ICONS[tag] ?? <CheckCircle className="h-4 w-4 text-slate-600" />}
@@ -283,7 +283,7 @@ export default function ShopDetailScreen({ shop, onBack, onBookNow }: Props) {
             <div className="mb-2 flex items-center justify-between">
               <h2 className="text-[15px] font-bold text-foreground">Services</h2>
               <span className="rounded-full bg-accent/10 px-2.5 py-1 text-[11px] font-bold tracking-wide text-accent">
-                From Rs {shop.startingPrice}
+                From Rs {shop.startingPrice ?? 0}
               </span>
             </div>
             
@@ -336,11 +336,11 @@ export default function ShopDetailScreen({ shop, onBack, onBookNow }: Props) {
         <div className="mx-auto flex max-w-[430px] items-center justify-between mb-3">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Next Available</p>
-            <p className="text-[15px] font-extrabold text-foreground mt-0.5">{shop.nextSlot}</p>
+            <p className="text-[15px] font-extrabold text-foreground mt-0.5">{shop.nextSlot || "Available"}</p>
           </div>
           <div className="text-right">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Starting At</p>
-            <p className="text-[15px] font-extrabold text-accent mt-0.5">Rs {shop.startingPrice}</p>
+            <p className="text-[15px] font-extrabold text-accent mt-0.5">Rs {shop.startingPrice || 0}</p>
           </div>
         </div>
         <button

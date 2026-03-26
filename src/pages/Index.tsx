@@ -49,9 +49,24 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
         }}>
           <div style={{ fontSize: "48px" }}>⚠️</div>
           <h2 style={{ fontSize: "20px", fontWeight: 800 }}>Something went wrong</h2>
-          <p style={{ fontSize: "13px", color: "#94a3b8", maxWidth: "260px" }}>
-            {formatError(this.state.error)}
+          <p style={{ fontSize: "14px", color: "#f87171", fontWeight: 600 }}>
+            {this.state.error.name}: {this.state.error.message}
           </p>
+          <div style={{
+            background: "rgba(0,0,0,0.3)",
+            padding: "12px",
+            borderRadius: "8px",
+            fontSize: "10px",
+            color: "#94a3b8",
+            textAlign: "left",
+            maxWidth: "100%",
+            overflow: "auto",
+            maxHeight: "200px",
+            fontFamily: "monospace",
+            whiteSpace: "pre-wrap"
+          }}>
+            {this.state.error.stack || "No stack trace available"}
+          </div>
           <button
             onClick={() => window.location.reload()}
             style={{
@@ -241,7 +256,18 @@ function AppInner() {
   );
 
   // The local 'effectiveShop' uses the full data if available, otherwise falls back to the list summary
-  const effectiveShop = (fullShopDetails as any) || selectedShop;
+  const effectiveShop = fullShopDetails
+    ? ({
+        ...selectedShop,
+        ...fullShopDetails,
+        services: (fullShopDetails.services || []).map((s) => ({
+          ...s,
+          id: s._id,
+          duration: `${s.duration} min`,
+          icon: "Scissors", // Default icon as expected by Service interface
+        })),
+      } as any as Shop)
+    : selectedShop;
 
   const reservedSlots = selectedShop && dbBookedSlots
     ? dbBookedSlots.reduce<Record<string, Record<string, number>>>((accumulator, slot) => {
@@ -471,6 +497,7 @@ function AppInner() {
                     totalAmount: booking.services.reduce((acc, s) => acc + s.price, 0),
                     date: booking.date,
                     time: booking.time,
+                    clientNow: Date.now(),
                   });
 
                   setConfirmedBooking({ ...booking, id: bookingId, otp });

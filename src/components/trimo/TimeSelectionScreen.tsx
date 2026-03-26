@@ -226,10 +226,17 @@ export default function TimeSelectionScreen({
   const [dateIdx, setDateIdx] = useState(0);
   const selectedDate = dateOptions[dateIdx]?.value ?? dateOptions[0].value;
 
+  // ── Sync "now" for past-time filtering (updates every 15s to stay fresh without over-querying)
+  const [clientNow, setClientNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setClientNow(Date.now()), 15000);
+    return () => clearInterval(timer);
+  }, []);
+
   // ── Convex available slots (reactive source of truth)
   const availableSlots = useQuery(
     api.shops.getAvailableSlots,
-    { shopId: shopId as Id<"shops">, date: selectedDate }
+    { shopId: shopId as Id<"shops">, date: selectedDate, clientNow }
   );
 
   const [selectedHour, setSelectedHour] = useState(9);
@@ -251,7 +258,20 @@ export default function TimeSelectionScreen({
   // ── Find matching slot from backend ─────────────────────────────────────
   const currentSlot = availableSlots?.find(s => s.time === time24);
 
-  const isSlotValid = currentSlot?.available === true;
+  const isSlotValid = useMemo(() => {
+    if (!currentSlot?.available) return false;
+    
+    // Additional local wall-clock check for today's slots
+    if (dateIdx === 0) { // Today
+      const now = new Date();
+      const [h, m] = currentSlot.time.split(":").map(Number);
+      const slotTime = new Date();
+      slotTime.setHours(h, m, 0, 0);
+      if (slotTime < now) return false;
+    }
+    
+    return true;
+  }, [currentSlot, dateIdx]);
 
   // ── Display label for selected time
   const formattedTime = `${String(selectedHour).padStart(2, "0")}:${String(selectedMinute).padStart(2, "0")} ${ampm}`;
@@ -264,6 +284,16 @@ export default function TimeSelectionScreen({
 
   const statusMessage = (() => {
     if (availableSlots === undefined) return "Checking availability…";
+
+    // ── Local past-time check for immediate feedback (Overwrites server status if locally past)
+    if (dateIdx === 0) {
+      const now = new Date();
+      const [h, m] = time24.split(":").map(Number);
+      const slotTime = new Date();
+      slotTime.setHours(h, m, 0, 0);
+      if (slotTime < now) return "This time has already passed.";
+    }
+
     if (!currentSlot) {
       // Logic for why it doesn't exist (past, closed, etc.)
       const n = new Date();

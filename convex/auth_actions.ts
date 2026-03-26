@@ -45,8 +45,13 @@ export const upsertShop = action({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Unauthenticated");
 
+    // Allow migration from legacy owner-style UIDs
+    const incomingUid = args.firebaseUid;
+    const isLegacy = incomingUid?.startsWith("owner-");
+    const finalFirebaseUid = isLegacy ? identity.subject : (incomingUid || identity.subject);
+
     // Strict ownership check: prevent creating/updating a shop for another user
-    if (args.firebaseUid && args.firebaseUid !== identity.subject) {
+    if (finalFirebaseUid !== identity.subject) {
       throw new Error("Unauthorized: Identity mismatch");
     }
 
@@ -58,6 +63,7 @@ export const upsertShop = action({
 
     return await ctx.runMutation(internal.shops.upsertShopInternal, {
       ...args,
+      firebaseUid: finalFirebaseUid,
       password: hashedPassword,
     });
   },

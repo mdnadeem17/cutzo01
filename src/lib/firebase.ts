@@ -1,5 +1,6 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, indexedDBLocalPersistence, initializeAuth } from "firebase/auth";
+import { Capacitor } from "@capacitor/core";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -11,4 +12,10 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
+
+// On native platforms, we use the native Firebase plugin primarily.
+// For the Web SDK parts (like Convex integration), we use indexedDB persistence 
+// to avoid the iframe manager (which causes SyntaxErrors in some WebView environments).
+export const auth = Capacitor.isNativePlatform() 
+  ? initializeAuth(app, { persistence: indexedDBLocalPersistence })
+  : getAuth(app);

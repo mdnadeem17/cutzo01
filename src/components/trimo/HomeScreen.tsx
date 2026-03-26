@@ -373,11 +373,12 @@ export default function HomeScreen({ onShopSelect, onNavigate, onLogout, custome
   const convexShops = convexShopsQuery ?? [];
 
   // Notifications logic
-  const { results: notifications } = usePaginatedQuery(
+  const { results: notificationResults } = usePaginatedQuery(
     api.profile.getUserNotifications,
     customer ? { userId: customer.userId } : "skip",
     { initialNumItems: 50 }
   );
+  const notifications = notificationResults ?? [];
   const unreadCount = notifications.filter((n) => !n.isRead).length || 0;
 
   // Map Convex shop records to the local Shop type
@@ -387,15 +388,15 @@ export default function HomeScreen({ onShopSelect, onNavigate, onLogout, custome
     return {
       id: s._id as string,
       ownerId: s.ownerId,
-      name: s.shopName,
-      address: s.address,
+      name: s.shopName ?? "Unnamed Shop",
+      address: s.address ?? "No address provided",
       image: s.images?.[0] ?? s.image ?? "https://images.unsplash.com/photo-1585747860715-2ba37e788b70?auto=format&fit=crop&w=800&q=80",
       images: s.images && s.images.length > 0 ? s.images : s.image ? [s.image] : [],
-      rating: s.rating,
-      reviewCount: s.totalReviews,
+      rating: s.rating ?? 0,
+      reviewCount: s.totalReviews ?? 0,
       bookingCount: 0,
-      distance: s.locationLabel ?? s.address,
-      locationLabel: s.locationLabel ?? s.address,
+      distance: s.locationLabel ?? s.address ?? "Nearby",
+      locationLabel: s.locationLabel ?? s.address ?? "Nearby",
       startingPrice: s.startingPrice ?? 0,
       nextSlot: s.nextSlot ?? "Available",
       gpsLocation: s.gpsLocation,
@@ -427,9 +428,9 @@ export default function HomeScreen({ onShopSelect, onNavigate, onLogout, custome
 
   const searchedShops = shops.filter((shop) => {
     const matchesSearch =
-      shop.name.toLowerCase().includes(searchText.toLowerCase()) ||
-      shop.address.toLowerCase().includes(searchText.toLowerCase()) ||
-      shop.locationLabel.toLowerCase().includes(searchText.toLowerCase());
+      (shop.name ?? "").toLowerCase().includes(searchText.toLowerCase()) ||
+      (shop.address ?? "").toLowerCase().includes(searchText.toLowerCase()) ||
+      (shop.locationLabel ?? "").toLowerCase().includes(searchText.toLowerCase());
 
     return matchesSearch;
   });

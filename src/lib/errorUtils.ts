@@ -62,7 +62,12 @@ export function formatError(error: any): string {
 
   // Handle generic long technical dumps
   if (message.includes("RangeError") || message.includes("TypeError") || message.includes("ReferenceError")) {
-    return `Application error: ${message.split('\n')[0]}`;
+    return `Application error: ${message}`;
+  }
+
+  // If we sanitized it, append the raw message in brackets for debugging
+  if (finalMessage !== message && !message.includes(finalMessage)) {
+    return `${finalMessage} (${message.substring(0, 100)}${message.length > 100 ? "..." : ""})`;
   }
 
   return finalMessage;

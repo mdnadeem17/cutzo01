@@ -245,9 +245,13 @@ export function NotificationsScreen({ userId, onBack }: { userId: string; onBack
     { initialNumItems: 10 }
   );
 
+  const seed = useMutation(api.profile.seedNotifications);
+  const clearAll = useMutation(api.profile.clearUserNotifications);
+  const deleteNotification = useMutation(api.profile.deleteNotification);
+
   useEffect(() => {
     seed({ userId });
-  }, [userId, seed]);
+  }, [userId]);
 
   const handleClearAll = async () => {
     if (confirm("Are you sure you want to clear all notifications?")) {
@@ -260,7 +264,7 @@ export function NotificationsScreen({ userId, onBack }: { userId: string; onBack
     await deleteNotification({ notificationId: id });
   };
 
-  const actionButton = results.length > 0 ? (
+  const actionButton = (results?.length ?? 0) > 0 ? (
     <button
       onClick={handleClearAll}
       className="rounded-full bg-white/20 px-3 py-1.5 text-xs font-bold text-white scale-tap hover:bg-white/30 transition-colors"
@@ -275,14 +279,14 @@ export function NotificationsScreen({ userId, onBack }: { userId: string; onBack
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-20">
         {status === "LoadingFirstPage" ? (
           <div className="py-20 text-center animate-pulse">Loading...</div>
-        ) : results.length === 0 ? (
+        ) : (results?.length ?? 0) === 0 ? (
           <div className="py-20 text-center text-muted-foreground">
             <Bell className="mx-auto mb-3 h-10 w-10 opacity-30" />
             <p className="font-semibold">No notifications yet</p>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {results.map((n) => (
+            {results?.map((n) => (
               <div key={n._id} className={`flex gap-3 rounded-[18px] p-4 card-shadow relative ${n.isRead ? "bg-card" : "bg-primary/5"}`}>
                 <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${n.isRead ? "bg-muted text-muted-foreground" : "bg-primary text-white"}`}>
                   <Bell className="h-5 w-5" />

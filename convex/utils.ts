@@ -45,7 +45,14 @@ export function time24To12(t24: string): string {
  */
 export function isPastTime(date: string, time: string, nowMs: number): boolean {
   try {
+    // Basic UTC comparison (fallback)
     const slotDate = new Date(`${date}T${time}:00`);
+    if (slotDate.getTime() < nowMs - (1000 * 60 * 60 * 12)) return true; // Definitely past (more than 12h ago)
+    if (slotDate.getTime() > nowMs + (1000 * 60 * 60 * 12)) return false; // Definitely future (more than 12h from now)
+
+    // For times within same-ish 24h window, string comparison is safer for wall-clocks across timezones
+    // if the 'date' string matches today's date on the client (which we assume if it's currently selected as "Today")
+    // We'll trust the UTC timestamp for relative past/future but add a grace period or better logic in shops.ts
     return slotDate.getTime() < nowMs;
   } catch (e) {
     return false;

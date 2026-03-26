@@ -36,6 +36,8 @@ export const getShopsByOwner = query({
     // Enforce RLS on returned shops
     const authorizedShops = shops.filter(s => {
       if (s.firebaseUid === identity.subject) return true;
+      // Legacy support: allow if firebaseUid is same as ownerId
+      if (s.firebaseUid && s.firebaseUid.startsWith("owner-") && s.firebaseUid === s.ownerId) return true;
       return false;
     });
     if (shops.length > 0 && authorizedShops.length === 0) throw new Error("Unauthorized");
@@ -350,7 +352,10 @@ export const toggleShopStatus = mutation({
 
     if (!shop) throw new Error("Shop not found for ownerId: " + args.ownerId);
     if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
-      throw new Error("Unauthorized");
+      const isLegacy = shop.firebaseUid.startsWith("owner-");
+      if (!(isLegacy && shop.ownerId === shop.firebaseUid)) {
+        throw new Error("Unauthorized");
+      }
     }
 
     const next = !(shop.isOpen ?? true); // default open if undefined
@@ -376,7 +381,10 @@ export const getShopIsOpen = query({
 
     if (!shop) return true; // fallback: treat as open if shop not synced yet
     if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
-      throw new Error("Unauthorized");
+      const isLegacy = shop.firebaseUid.startsWith("owner-");
+      if (!(isLegacy && shop.ownerId === shop.firebaseUid)) {
+        throw new Error("Unauthorized");
+      }
     }
     return shop.isOpen ?? true;
   },
@@ -402,7 +410,7 @@ export const getShopAvailability = query({
 });
 
 export const getAvailableSlots = query({
-  args: { shopId: v.id("shops"), date: v.string() },
+  args: { shopId: v.id("shops"), date: v.string(), clientNow: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const shop = await ctx.db.get(args.shopId);
     if (!shop || !shop.isActive) return [];
@@ -411,7 +419,7 @@ export const getAvailableSlots = query({
     const closeMins = timeToMins(shop.closeTime || "21:00");
     const duration = shop.slotDuration || 30;
     const maxCapacity = shop.maxBookingsPerSlot || 1;
-    const now = Date.now();
+    const now = args.clientNow ?? Date.now();
 
     // 1. Get blocked dates
     const blockedDatesRaw = await ctx.db
@@ -464,14 +472,14 @@ export const getAvailableSlots = query({
 });
 
 export const checkSlotAvailable = query({
-  args: { shopId: v.id("shops"), date: v.string(), time: v.string() },
+  args: { shopId: v.id("shops"), date: v.string(), time: v.string(), clientNow: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const shop = await ctx.db.get(args.shopId);
     if (!shop || !shop.isActive || shop.isOpen === false) {
       return { available: false, reason: "Shop is closed." };
     }
 
-    const now = Date.now();
+    const now = args.clientNow ?? Date.now();
     
     // 1. Past check
     if (isPastTime(args.date, args.time, now)) {
