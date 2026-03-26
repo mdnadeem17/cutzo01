@@ -152,6 +152,9 @@ export default defineSchema({
   rateLimits: defineTable({
     userId: v.string(),
     endpoint: v.string(),
-    timestamp: v.number(),
+    timestamp: v.optional(v.number()),
+    // Legacy fields causing validation errors
+    count: v.optional(v.number()),
+    windowStart: v.optional(v.number()),
   }).index("by_user_endpoint_time", ["userId", "endpoint", "timestamp"]),
 });
