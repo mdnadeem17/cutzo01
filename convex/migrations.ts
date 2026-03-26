@@ -79,3 +79,13 @@ export const migrateLegacyOwners = internalMutation({
     };
   },
 });
+
+export const clearRateLimits = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const logs = await ctx.db.query("rateLimits").collect();
+    for (const log of logs) {
+      await ctx.db.delete(log._id);
+    }
+  },
+});
