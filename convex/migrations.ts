@@ -1,11 +1,14 @@
-import { mutation } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
 /**
  * One-time migration to link legacy `owner-` shop owners to their real Firebase UIDs.
  * Matches by phone number for shops with role "shop_owner".
+ * 
+ * This is an internal mutation that can only be called from the Convex dashboard
+ * or other internal functions. It is NOT accessible from the client.
  */
-export const migrateLegacyOwners = mutation({
+export const migrateLegacyOwners = internalMutation({
   args: {
     dryRun: v.optional(v.boolean()),
   },
