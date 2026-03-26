@@ -1,4 +1,5 @@
 import {
+  Bell,
   Bookmark,
   ChevronRight,
   HelpCircle,
@@ -32,6 +33,7 @@ export default function ProfileScreen({ user, onNavigate, onLogout }: Props) {
     {
       title: "My Account",
       items: [
+        { icon: Bell, label: "Notifications", sub: "Updates and alerts", screen: "notifications" as Screen },
         { icon: Bookmark, label: "Saved Shops", sub: "Quick access to your favorite barber shops", screen: "savedShops" as Screen },
         { icon: Tag, label: "Offers & Coupons", sub: "See active TRIMO deals near you", screen: "offers" as Screen },
       ],

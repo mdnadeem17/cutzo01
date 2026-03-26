@@ -507,6 +507,21 @@ function RescheduleView({
         <h1 className="text-2xl font-bold text-white animate-fade-slide-up">Reschedule</h1>
         <p className="mt-1 text-sm text-white/70 animate-fade-in-delayed">{booking.shopName}</p>
       </div>
+      
+      {/* Original Booking Info */}
+      <div className="mx-4 mt-4 overflow-hidden rounded-[16px] bg-primary/5 border border-primary/10 p-4">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-primary/60 mb-1">Current Booking</p>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CalendarCheck className="h-4 w-4 text-primary" />
+            <p className="text-sm font-bold text-foreground">{fmtDate(booking.date)}</p>
+          </div>
+          <div className="flex items-center gap-2">
+             <Clock className="h-4 w-4 text-primary" />
+             <p className="text-sm font-bold text-foreground">{booking.time}</p>
+          </div>
+        </div>
+      </div>
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto" style={{ paddingBottom: "calc(120px + env(safe-area-inset-bottom, 0px))" }}>
@@ -527,13 +542,19 @@ function RescheduleView({
                 <button
                   key={d}
                   onClick={() => { setSelectedDate(d); setSelectedTime(null); }}
-                  className="shrink-0 flex flex-col items-center rounded-[14px] px-3 py-2.5 w-14 scale-tap transition-all"
+                  className="shrink-0 flex flex-col items-center rounded-[14px] px-3 py-2.5 w-14 scale-tap transition-all relative"
                   style={{
                     background: isSelected ? "hsl(var(--primary))" : "hsl(var(--card))",
                     color: isSelected ? "#fff" : "hsl(var(--foreground))",
                     boxShadow: isSelected ? "0 4px 12px hsl(var(--primary)/0.3)" : "0 1px 4px rgba(0,0,0,0.06)",
+                    border: d === booking.date ? "1.5px solid hsl(var(--primary)/0.3)" : "1.5px solid transparent",
                   }}
                 >
+                  {d === booking.date && (
+                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-white ring-2 ring-background">
+                      <Check className="h-2.5 w-2.5" />
+                    </span>
+                  )}
                   <span className="text-[10px] font-bold opacity-80">{dayName}</span>
                   <span className="text-lg font-extrabold leading-tight">{dayNum}</span>
                   <span className="text-[10px] font-semibold opacity-80">{mon}</span>
@@ -555,13 +576,19 @@ function RescheduleView({
                 <button
                   key={slot}
                   onClick={() => setSelectedTime(slot)}
-                  className="rounded-[12px] py-2.5 text-xs font-bold scale-tap transition-all"
+                  className="rounded-[12px] py-2.5 text-xs font-bold scale-tap transition-all relative"
                   style={{
                     background: isSelected ? "hsl(var(--accent))" : "hsl(var(--card))",
                     color: isSelected ? "#fff" : "hsl(var(--foreground))",
                     boxShadow: isSelected ? "0 4px 10px hsl(var(--accent)/0.30)" : "0 1px 4px rgba(0,0,0,0.06)",
+                    border: (slot === booking.time && selectedDate === booking.date) ? "1.5px solid hsl(var(--accent)/0.3)" : "1.5px solid transparent",
                   }}
                 >
+                  {slot === booking.time && selectedDate === booking.date && (
+                    <span className="absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full bg-accent text-[8px] font-black text-white ring-2 ring-background shadow-sm">
+                      CURRENT
+                    </span>
+                  )}
                   {slot}
                 </button>
               );
@@ -572,7 +599,7 @@ function RescheduleView({
 
       {/* Confirm Button */}
       <div
-        className="shrink-0 fixed bottom-0 left-0 right-0 z-30 px-4 pt-3 pb-6"
+        className="shrink-0 fixed bottom-0 left-0 right-0 z-30 px-4 pt-3"
         style={{
           maxWidth: 430,
           margin: "0 auto",
@@ -580,6 +607,7 @@ function RescheduleView({
           backdropFilter: "blur(14px)",
           borderTop: "1px solid hsl(var(--border)/0.6)",
           borderRadius: "20px 20px 0 0",
+          paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))"
         }}
       >
         {selectedTime && (

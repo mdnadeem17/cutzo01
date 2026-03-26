@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  Bell,
   CheckCircle,
   Clock,
   MapPin,
@@ -23,6 +24,7 @@ interface Props {
   shop: Shop;
   onBack: () => void;
   onBookNow: () => void;
+  onOpenNotifications?: () => void;
 }
 
 const TAG_ICONS: Record<string, React.ReactNode> = {
@@ -114,7 +116,7 @@ function ReviewCard({ review }: { review: Review }) {
   );
 }
 
-export default function ShopDetailScreen({ shop, onBack, onBookNow }: Props) {
+export default function ShopDetailScreen({ shop, onBack, onBookNow, onOpenNotifications }: Props) {
   const [emblaRef, emblaApi] = useEmblaCarousel({ loop: false });
   const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -169,9 +171,20 @@ export default function ShopDetailScreen({ shop, onBack, onBookNow }: Props) {
           <ArrowLeft className="h-5 w-5 text-white" />
         </button>
 
-        <div className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-black/40 px-3 py-1.5 backdrop-blur-md shadow-lg border border-white/20">
-          <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
-          <span className="text-sm font-bold text-white">{ratingLabel}</span>
+        <div className="pointer-events-auto flex items-center gap-2">
+          {onOpenNotifications && (
+            <button
+              onClick={onOpenNotifications}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-black/40 shadow-lg backdrop-blur-md scale-tap transition-transform border border-white/20"
+            >
+              <Bell className="h-4.5 w-4.5 text-white" />
+            </button>
+          )}
+
+          <div className="flex items-center gap-1.5 rounded-full bg-black/40 px-3 py-2 backdrop-blur-md shadow-lg border border-white/20">
+            <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
+            <span className="text-sm font-bold text-white">{ratingLabel}</span>
+          </div>
         </div>
       </div>
 

@@ -441,6 +441,7 @@ function AppInner() {
               shop={effectiveShop}
               onBack={() => navigateTo("home", "back")}
               onBookNow={handleBookNow}
+              onOpenNotifications={() => navigateTo("notifications")}
             />
           )}
 
