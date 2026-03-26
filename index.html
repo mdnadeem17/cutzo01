@@ -7,12 +7,12 @@
 
     <!-- Content Security Policy — restricts script injection and network targets -->
     <meta http-equiv="Content-Security-Policy" content="
-      default-src 'self' capacitor:;
-      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.convex.cloud https://*.googleapis.com https://*.firebase.com https://apis.google.com capacitor:;
-      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com capacitor:;
-      font-src 'self' https://fonts.gstatic.com capacitor:;
-      img-src 'self' data: https://*.convex.cloud https://*.firebase.com https://*.googleusercontent.com https://images.unsplash.com capacitor:;
-      connect-src 'self' https://*.convex.cloud wss://*.convex.cloud https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.googleapis.com https://*.firebase.com capacitor:;
+      default-src 'self' capacitor: http://localhost:*;
+      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.convex.cloud https://*.googleapis.com https://*.firebase.com https://apis.google.com capacitor: http://localhost:*;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com capacitor: http://localhost:*;
+      font-src 'self' https://fonts.gstatic.com capacitor: http://localhost:*;
+      img-src 'self' data: blob: https://*.convex.cloud https://*.firebase.com https://*.googleusercontent.com https://images.unsplash.com capacitor: http://localhost:*;
+      connect-src 'self' https://*.convex.cloud wss://*.convex.cloud https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.googleapis.com https://*.firebase.com capacitor: http://localhost:*;
       frame-src 'self' https://*.firebaseapp.com https://*.firebase.com;
     " />
     <meta name="apple-mobile-web-app-capable" content="yes" />
