@@ -46,13 +46,16 @@ export function time24To12(t24: string): string {
 export function isPastTime(date: string, time: string, nowMs: number): boolean {
   try {
     // Basic UTC comparison (fallback)
-    const slotDate = new Date(`${date}T${time}:00`);
-    if (slotDate.getTime() < nowMs - (1000 * 60 * 60 * 12)) return true; // Definitely past (more than 12h ago)
-    if (slotDate.getTime() > nowMs + (1000 * 60 * 60 * 12)) return false; // Definitely future (more than 12h from now)
+    // IMPORTANT: We append +05:30 (IST) because the trimo-booking strings are local to India.
+    // Without this, the Convex UTC environment treats them as UTC, causing a 5.5h error.
+    const slotDate = new Date(`${date}T${time}:00+05:30`);
+    
+    // Safety check: if construction fails or results in NaN, fall back to simple construction
+    if (isNaN(slotDate.getTime())) {
+      const fallbackDate = new Date(`${date}T${time}:00`);
+      return fallbackDate.getTime() < nowMs;
+    }
 
-    // For times within same-ish 24h window, string comparison is safer for wall-clocks across timezones
-    // if the 'date' string matches today's date on the client (which we assume if it's currently selected as "Today")
-    // We'll trust the UTC timestamp for relative past/future but add a grace period or better logic in shops.ts
     return slotDate.getTime() < nowMs;
   } catch (e) {
     return false;
