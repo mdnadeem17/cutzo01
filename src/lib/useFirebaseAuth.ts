@@ -18,6 +18,7 @@ export default function useFirebaseAuth() {
 
       const listener = FirebaseAuthentication.addListener("authStateChange", (change) => {
         setUser(change.user || null);
+        setIsLoading(false);
       });
 
       return () => {

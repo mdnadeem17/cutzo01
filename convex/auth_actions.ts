@@ -45,6 +45,11 @@ export const upsertShop = action({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Unauthenticated");
 
+    // Strict ownership check: prevent creating/updating a shop for another user
+    if (args.firebaseUid && args.firebaseUid !== identity.subject) {
+      throw new Error("Unauthorized: Identity mismatch");
+    }
+
     // Hash password if provided and not already hashed
     let hashedPassword = args.password;
     if (args.password && !args.password.startsWith("$2a$")) {

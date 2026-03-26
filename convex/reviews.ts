@@ -184,7 +184,8 @@ export const getShopReviews = query({
     return await ctx.db
       .query("reviews")
       .withIndex("by_shop", (q) => q.eq("shopId", args.shopId))
-      .collect();
+      .order("desc")
+      .take(30);
   },
 });
 

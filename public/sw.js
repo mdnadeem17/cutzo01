@@ -1,4 +1,4 @@
-const VERSION = "trimo-v1";
+const VERSION = "trimo-v" + "__BUILD_DATE__";
 const APP_SHELL = ["/", "/manifest.webmanifest", "/pwa-192.png", "/pwa-512.png", "/apple-touch-icon.png"];
 
 self.addEventListener("install", (event) => {

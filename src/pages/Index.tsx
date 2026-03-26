@@ -77,21 +77,30 @@ type NavDir = "forward" | "back";
 // Screens with a logical "parent" — going to a parent is a back navigation
 const BACK_SCREENS = new Set<Screen>(["home", "splash", "value"]);
 
+const SCREEN_TRANSITION = {
+  duration: 0.35,
+  ease: [0.22, 1, 0.36, 1],
+  opacity: { duration: 0.25 },
+};
+
 const screenVariants = {
   enter: (dir: NavDir) => ({
     opacity: 0,
     x: dir === "forward" ? "100%" : "-30%",
     zIndex: dir === "forward" ? 20 : 10,
+    transition: SCREEN_TRANSITION,
   }),
   center: {
     opacity: 1,
     x: "0%",
     zIndex: 20,
+    transition: SCREEN_TRANSITION,
   },
   exit: (dir: NavDir) => ({
     opacity: 0,
     x: dir === "forward" ? "-30%" : "100%",
     zIndex: dir === "forward" ? 10 : 20,
+    transition: SCREEN_TRANSITION,
   }),
 };
 
@@ -376,7 +385,7 @@ function AppInner() {
       ) : (
         <div className="customer-theme w-full min-h-screen">
           <div className="grid grid-cols-1 grid-rows-1 relative min-h-screen overflow-x-hidden">
-            <AnimatePresence initial={false} custom={navDir}>
+            <AnimatePresence initial={false} custom={navDir} mode="popLayout">
               <motion.div
                 key={screen}
                 custom={navDir}
@@ -384,11 +393,6 @@ function AppInner() {
                 initial="enter"
                 animate="center"
                 exit="exit"
-                transition={{
-                  duration: 0.35,
-                  ease: [0.22, 1, 0.36, 1],
-                  opacity: { duration: 0.25 },
-                }}
                 className="col-start-1 row-start-1 w-full bg-background"
                 style={{ 
                   willChange: "opacity, transform"

@@ -1,4 +1,5 @@
 import { ArrowLeft, ChevronRight, Clock, MapPin, Shield } from "lucide-react";
+import { useState } from "react";
 import { useLoading } from "./LoadingContext";
 import { Service, Shop } from "./types";
 
@@ -21,6 +22,7 @@ export default function BookingConfirmationScreen({
   onBack,
   onSuccess,
 }: Props) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { showLoading, hideLoading } = useLoading();
   const total = services.reduce((acc, service) => acc + service.price, 0);
   const totalDuration = services.reduce(
@@ -125,16 +127,24 @@ export default function BookingConfirmationScreen({
           <p className="text-lg font-bold text-accent">Rs {total}</p>
         </div>
         <button
-          onClick={() => {
+          disabled={isSubmitting}
+          onClick={async () => {
+            if (isSubmitting) return;
+            setIsSubmitting(true);
             showLoading("Sending booking request...");
-            setTimeout(() => {
+            try {
+              // The parent's onSuccess is async (it calls createBooking)
+              await onSuccess({ shop, services, date, time });
+            } finally {
+              setIsSubmitting(false);
               hideLoading();
-              onSuccess({ shop, services, date, time });
-            }, 1200);
+            }
           }}
-          className="customer-gradient h-[56px] w-full rounded-2xl text-base font-semibold text-white shadow-[0_0_15px_rgba(143,0,255,0.3)] scale-tap transition-transform"
+          className={`customer-gradient h-[56px] w-full rounded-2xl text-base font-semibold text-white shadow-[0_0_15px_rgba(143,0,255,0.3)] scale-tap transition-transform ${
+            isSubmitting ? "opacity-50 blur-[1px] pointer-events-none" : ""
+          }`}
         >
-          Send Booking Request
+          {isSubmitting ? "Processing..." : "Send Booking Request"}
         </button>
       </div>
     </div>

@@ -373,8 +373,12 @@ export default function HomeScreen({ onShopSelect, onNavigate, onLogout, custome
   const convexShops = convexShopsQuery ?? [];
 
   // Notifications logic
-  const paginatedNotifications = useQuery(api.profile.getUserNotifications, customer ? { userId: customer.userId, paginationOpts: { numItems: 50, cursor: null } } : "skip");
-  const unreadCount = paginatedNotifications?.page.filter((n) => !n.isRead).length || 0;
+  const { results: notifications } = usePaginatedQuery(
+    api.profile.getUserNotifications,
+    customer ? { userId: customer.userId } : "skip",
+    { initialNumItems: 50 }
+  );
+  const unreadCount = notifications.filter((n) => !n.isRead).length || 0;
 
   // Map Convex shop records to the local Shop type
   const shops: Shop[] = convexShops.map((s) => {
