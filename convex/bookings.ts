@@ -446,8 +446,9 @@ export const cancelBooking = mutation({
 
     if (args.callerOwnerId) {
       const shop = await ctx.db.get(booking.shopId);
-      if (!shop || shop.ownerId !== args.callerOwnerId) {
-        throw new Error("Unauthorized.");
+      if (!shop) throw new Error("Shop not found.");
+      if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
+        throw new Error("Unauthorized to cancel booking for this shop.");
       }
     } else if (args.callerCustomerId) {
       if (booking.customerId !== args.callerCustomerId) {
