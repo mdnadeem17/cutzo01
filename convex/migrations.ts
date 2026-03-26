@@ -1,24 +1,30 @@
 import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 
 /**
  * One-time migration to link legacy `owner-` shop owners to their real Firebase UIDs.
  * Matches by phone number for shops with role "shop_owner".
  * 
- * This is an internal mutation that can only be called from the Convex dashboard
- * or other internal functions. It is NOT accessible from the client.
+ * Refactored to use batched pagination to avoid timeouts on large datasets.
  */
 export const migrateLegacyOwners = internalMutation({
   args: {
+    cursor: v.optional(v.string()),
+    batchSize: v.optional(v.number()),
     dryRun: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const shops = await ctx.db.query("shops").collect();
+    const batchSize = args.batchSize ?? 50;
+    const { page, isDone, continueCursor } = await ctx.db
+      .query("shops")
+      .paginate({ cursor: args.cursor ?? null, numItems: batchSize });
+
     let migratedCount = 0;
     let skippedCount = 0;
     let notFoundCount = 0;
 
-    for (const shop of shops) {
+    for (const shop of page) {
       const needsMigration = !shop.firebaseUid || shop.firebaseUid.startsWith("owner-");
       
       if (!needsMigration) {
@@ -26,19 +32,16 @@ export const migrateLegacyOwners = internalMutation({
         continue;
       }
 
-      // Try to find a matching user by phone
       if (!shop.phone) {
         notFoundCount++;
         continue;
       }
 
+      // Efficient lookup via the new by_phone index
       const matchingUser = await ctx.db
         .query("users")
-        .withIndex("by_uid") // We can't query by phone easily without an index, so we'll filter
-        .filter((q) => q.and(
-          q.eq(q.field("phone"), shop.phone),
-          q.eq(q.field("role"), "shop_owner")
-        ))
+        .withIndex("by_phone", (q) => q.eq("phone", shop.phone))
+        .filter((q) => q.eq(q.field("role"), "shop_owner"))
         .first();
 
       if (matchingUser) {
@@ -54,11 +57,25 @@ export const migrateLegacyOwners = internalMutation({
       }
     }
 
+    console.log(`Batch processed: ${migratedCount} migrated, ${skippedCount} skipped, ${notFoundCount} not found.`);
+
+    if (!isDone) {
+      await ctx.scheduler.runAfter(0, internal.migrations.migrateLegacyOwners, {
+        cursor: continueCursor,
+        batchSize,
+        dryRun: args.dryRun,
+      });
+      return {
+        status: "BATCH_COMPLETE_CONTINUING",
+        migratedInThisBatch: migratedCount,
+        isDone: false,
+      };
+    }
+
     return {
       status: args.dryRun ? "DRY RUN COMPLETE" : "MIGRATION COMPLETE",
-      migrated: migratedCount,
-      skipped: skippedCount,
-      notFoundInUsers: notFoundCount,
+      migratedInThisBatch: migratedCount,
+      isDone: true,
     };
   },
 });

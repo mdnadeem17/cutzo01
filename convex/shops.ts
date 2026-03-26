@@ -376,9 +376,7 @@ export const getShopIsOpen = query({
 
     if (!shop) return true; // fallback: treat as open if shop not synced yet
     if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
-      if (!shop.firebaseUid.startsWith("owner-")) {
-        throw new Error("Unauthorized");
-      }
+      throw new Error("Unauthorized");
     }
     return shop.isOpen ?? true;
   },

@@ -12,7 +12,9 @@ export default defineSchema({
     phone: v.optional(v.string()),
     role: v.optional(v.union(v.literal("customer"), v.literal("shop_owner"))),
     createdAt: v.optional(v.string()),
-  }).index("by_uid", ["uid"]).index("by_firebase_uid", ["firebaseUid"]),
+  }).index("by_uid", ["uid"])
+    .index("by_firebase_uid", ["firebaseUid"])
+    .index("by_phone", ["phone"]),
 
   shops: defineTable({
     ownerId: v.string(), // local userId from localStorage (e.g. "owner-1234")

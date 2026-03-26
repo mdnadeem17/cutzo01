@@ -35,6 +35,15 @@ export const submitReview = mutation({
       throw new Error("You can only review completed bookings.");
     }
 
+    // ── 2b. Check if already reviewed ──────────────────────────────────────
+    const existing = await ctx.db
+      .query("reviews")
+      .withIndex("by_booking", (q) => q.eq("bookingId", args.bookingId))
+      .first();
+    if (existing) {
+      throw new Error("This booking has already been reviewed.");
+    }
+
     // ── 3. Check shop exists ───────────────────────────────────────────────
     const shop = await ctx.db.get(args.shopId);
     if (!shop) throw new Error("Shop not found.");
