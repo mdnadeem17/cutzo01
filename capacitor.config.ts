@@ -15,7 +15,8 @@ const config: CapacitorConfig = {
       overlaysWebView: true,    // web content goes under status bar (edge-to-edge)
     },
     SplashScreen: {
-      launchShowDuration: 0,    // disable native splash (we have our own)
+      launchShowDuration: 1500, // keep native splash until React is ready
+      backgroundColor: "#8F00FF", // matches CSS
     },
   },
 };

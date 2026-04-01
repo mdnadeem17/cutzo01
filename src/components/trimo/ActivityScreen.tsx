@@ -403,8 +403,8 @@ function BookingDetailsView({
           ))}
         </div>
 
-        {/* OTP Collection Box */}
-        {booking.otp && (
+        {/* OTP Collection Box — only show for non-cancelled bookings */}
+        {booking.otp && booking.status !== "cancelled" && (
           <div className="rounded-xl bg-[#F8F0FF] border border-[#8F00FF] p-5 text-center shadow-[0_0_10px_rgba(143,0,255,0.2)]">
             <p className="text-[11px] font-black uppercase tracking-widest text-[#8F00FF]/80 mb-2">Service OTP</p>
             <p className="text-[40px] leading-tight font-black tracking-[0.25em] ml-[0.25em] text-[#8F00FF]">{booking.otp}</p>
@@ -490,7 +490,12 @@ function RescheduleView({
     return d.toISOString().split("T")[0];
   });
 
-  const slots = buildSlots("09:00", "21:00");
+  // Bug 8: use the actual shop hours from the booking instead of hardcoded values.
+  // (The booking enrichment in getBookingsByCustomer returns shopOpenTime/shopCloseTime
+  // if present; fall back to sensible defaults.)
+  const openTime = (booking as any).shopOpenTime || "09:00";
+  const closeTime = (booking as any).shopCloseTime || "21:00";
+  const slots = buildSlots(openTime, closeTime);
 
   const canConfirm = selectedTime !== null;
 

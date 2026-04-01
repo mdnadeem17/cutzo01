@@ -154,11 +154,26 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
     if (Capacitor.isNativePlatform()) {
       try {
         const result = await FirebaseAuthentication.signInWithGoogle();
+        
+        // CRITICAL BUG FIX: Native plugin does NOT automatically sync session
+        // to the Web JS SDK. We must explicitly sign in to the JS SDK so
+        // the Convex provider receives the token and resolves the user query.
+        if (result.credential?.idToken) {
+          // Standard path: use idToken to link native session to Web SDK
+          const cred = GoogleAuthProvider.credential(result.credential.idToken);
+          await signInWithCredential(auth, cred);
+        } else {
+          // Fallback: if native login succeeded but no idToken was returned,
+          // force-refresh the existing auth session so Convex has a valid token.
+          if (auth.currentUser) {
+            await auth.currentUser.getIdToken(true);
+          } else {
+            throw new Error("Google Sign-In did not return credentials. Please try again.");
+          }
+        }
+
         if (result.user) {
           const user = result.user;
-          
-
-
           setFirebaseUid(user.uid);
           setSetupDraft((current) => ({
             ...current,
@@ -166,7 +181,6 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
             email: user.email || "",
             authProvider: "google",
           }));
-          
           // The useEffect will handle syncing with Convex once firebaseUid is set
         } else {
           throw new Error("No user returned from native sign-in.");

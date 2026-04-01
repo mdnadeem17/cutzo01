@@ -39,21 +39,22 @@ export function time24To12(t24: string): string {
 }
 
 /** 
- * Check if a slot is in the past compared to current server time.
+ * Check if a slot is in the past compared to current client time (passed as nowMs).
  * Date format: "YYYY-MM-DD"
  * Time format: "HH:mm" (24h)
+ * 
+ * IMPORTANT: We do NOT append a timezone offset here. The `nowMs` value is
+ * sourced from Date.now() in the client browser, which gives UTC milliseconds.
+ * Parsing `date + time` without any suffix gives "local time" which is then
+ * converted to UTC by the JS engine — making both sides comparable in UTC ms.
+ * Previously, hardcoding `+05:30` (IST) caused a 5.5h error for non-IST users.
  */
 export function isPastTime(date: string, time: string, nowMs: number): boolean {
   try {
-    // Basic UTC comparison (fallback)
-    // IMPORTANT: We append +05:30 (IST) because the trimo-booking strings are local to India.
-    // Without this, the Convex UTC environment treats them as UTC, causing a 5.5h error.
-    const slotDate = new Date(`${date}T${time}:00+05:30`);
+    const slotDate = new Date(`${date}T${time}:00`);
     
-    // Safety check: if construction fails or results in NaN, fall back to simple construction
     if (isNaN(slotDate.getTime())) {
-      const fallbackDate = new Date(`${date}T${time}:00`);
-      return fallbackDate.getTime() < nowMs;
+      return false; // Don't block if we can't parse
     }
 
     return slotDate.getTime() < nowMs;

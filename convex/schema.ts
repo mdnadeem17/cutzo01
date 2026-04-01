@@ -31,7 +31,8 @@ export default defineSchema({
     servicesSummary: v.optional(v.array(v.object({ name: v.string(), price: v.number() }))), // Denormalized for listing performance
     isOpen: v.optional(v.boolean()), // Owner-controlled: accepts bookings right now?
     phone: v.optional(v.string()),
-    image: v.optional(v.string()),
+    image: v.optional(v.string()), // Deprecated base64, kept for backwards compatibility
+    imageStorageId: v.optional(v.id("_storage")), // New Convex Storage ID
     images: v.optional(v.array(v.string())),
     startingPrice: v.optional(v.number()),
     openTime: v.optional(v.string()),
@@ -55,7 +56,7 @@ export default defineSchema({
     servicesJson: v.optional(v.string()),
     availabilitySlotsJson: v.optional(v.string()),
     blockedDatesJson: v.optional(v.string()),
-  }).index("by_owner", ["ownerId"]).index("by_phone", ["phone"]).index("by_firebase_uid", ["firebaseUid"]),
+  }).index("by_owner", ["ownerId"]).index("by_phone", ["phone"]).index("by_firebase_uid", ["firebaseUid"]).index("by_username", ["username"]).index("by_status", ["status", "isActive"]),
 
   services: defineTable({
     shopId: v.id("shops"),
@@ -84,7 +85,9 @@ export default defineSchema({
     type: v.string(),
     isRead: v.boolean(),
     createdAt: v.number(),
-  }).index("by_user", ["userId"]),
+  }).index("by_user", ["userId"])
+    .index("by_user_created", ["userId", "createdAt"]) // Added for faster cleanup
+    .index("by_created", ["createdAt"]), // Added for global time-based cleanup
 
   bookings: defineTable({
     customerId: v.string(), // Local customer ID string (Firebase UID)

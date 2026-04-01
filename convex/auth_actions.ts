@@ -4,6 +4,7 @@ import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 
 export const upsertShop = action({
   args: {
@@ -14,6 +15,7 @@ export const upsertShop = action({
     lng: v.number(),
     phone: v.optional(v.string()),
     image: v.optional(v.string()),
+    imageStorageId: v.optional(v.id("_storage")),
     images: v.optional(v.array(v.string())),
     startingPrice: v.optional(v.number()),
     openTime: v.optional(v.string()),
@@ -57,7 +59,7 @@ export const upsertShop = action({
 
     // Hash password if provided and not already hashed
     let hashedPassword = args.password;
-    if (args.password && !args.password.startsWith("$2a$")) {
+    if (args.password && !args.password.startsWith("$2")) {
       hashedPassword = await bcrypt.hash(args.password, 10);
     }
 
@@ -86,15 +88,37 @@ export const loginShopOwner = action({
     let isMatch = false;
     const storedPassword = shop.password;
 
-    // 1. Try standard bcrypt comparison
-    if (storedPassword.startsWith("$2a$")) {
+    // 1. Try standard bcrypt comparison ($2a$, $2b$, $2y$)
+    if (storedPassword.startsWith("$2")) {
       isMatch = await bcrypt.compare(args.password, storedPassword);
+      
+      // Secondary check: for accounts created while the double-hashing bug was active.
+      // (Client sent SHA-256 string, server bcrypt-ed that SHA-256 string).
+      if (!isMatch) {
+        const doubleHashedFallback = crypto.createHash("sha256").update(args.password).digest("hex");
+        isMatch = await bcrypt.compare(doubleHashedFallback, storedPassword);
+
+        // If it worked, we auto-upgrade them to standard bcrypt immediately!
+        if (isMatch) {
+          const newHash = await bcrypt.hash(args.password, 10);
+          await ctx.runMutation(internal.shops.patchShopPassword, {
+            shopId: shop._id,
+            password: newHash,
+          });
+        }
+      }
     } else {
-      // 2. Legacy plaintext comparison (Lazy Migration)
+      // 2. Legacy plaintext comparison
       isMatch = storedPassword === args.password;
       
+      // 3. Legacy SHA-256 hex comparison (from previous client-side hashing behavior)
+      if (!isMatch && storedPassword.length === 64) {
+        const sha256Hash = crypto.createHash("sha256").update(args.password).digest("hex");
+        isMatch = storedPassword === sha256Hash;
+      }
+      
       if (isMatch) {
-        // Automatically upgrade to hashed password
+        // Automatically upgrade to bcrypt hash once they succeed
         const newHash = await bcrypt.hash(args.password, 10);
         await ctx.runMutation(internal.shops.patchShopPassword, {
           shopId: shop._id,
@@ -115,8 +139,25 @@ export const loginShopOwner = action({
       return { success: false, error: "Your account has been rejected." };
     }
 
+    // Lazy Migration: Sync current Firebase Auth token to the shop so subsequent queries pass
+    let updatedFirebaseUid = shop.firebaseUid;
+    try {
+      const identity = await ctx.auth.getUserIdentity();
+      if (identity && shop.firebaseUid !== identity.subject) {
+        await ctx.runMutation(internal.shops.patchShopFirebaseUid, {
+          shopId: shop._id,
+          firebaseUid: identity.subject,
+        });
+        // BUG 5 FIX: do NOT mutate frozen Convex document; track new value locally instead
+        updatedFirebaseUid = identity.subject;
+      }
+    } catch(e) {
+      // Ignore auth errors if they aren't signed in to firebase yet
+    }
+
     // Return shop data without sensitive fields
-    const { password: _pw, username: _un, ...safeShop } = shop;
+    const { password: _pw, username: _un, ...safeShopBase } = shop;
+    const safeShop = { ...safeShopBase, firebaseUid: updatedFirebaseUid };
     return { success: true, shop: safeShop };
   },
 });

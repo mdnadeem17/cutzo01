@@ -4,7 +4,7 @@ import { useState } from "react";
 import { isThisWeek, isToday, isTomorrow, parseISO } from "date-fns";
 import TrimoHeader from "./TrimoHeader";
 import { VendorBooking } from "./types";
-import { formatBookingDate, formatCurrency } from "./utils";
+import { formatBookingDate, formatCurrency, formatHourLabel } from "./utils";
 import OtpVerificationModal from "./OtpVerificationModal";
 
 type FilterTab = VendorBooking["status"];
@@ -296,7 +296,7 @@ export default function BookingsScreen({
                           {formatBookingDate(booking.date)}
                         </p>
                         <p className="mt-0.5 text-[11px] font-bold text-primary flex items-center gap-1">
-                          <Clock className="w-3 h-3" /> {booking.time}
+                          <Clock className="w-3 h-3" /> {formatHourLabel(booking.time)}
                         </p>
                       </div>
                       <div className="pl-3 text-right">
@@ -390,6 +390,7 @@ export default function BookingsScreen({
       </div>
 
       <OtpVerificationModal
+        key={verifyingId ?? "closed"}  // BUG 4 FIX: re-mount modal on each new booking to reset OTP state
         isOpen={!!verifyingId}
         isLoading={isVerifying}
         onClose={() => setVerifyingId(null)}

@@ -227,10 +227,10 @@ export default function TimeSelectionScreen({
   const [dateIdx, setDateIdx] = useState(0);
   const selectedDate = dateOptions[dateIdx]?.value ?? dateOptions[0].value;
 
-  // ── Sync "now" for past-time filtering (updates every 15s to stay fresh without over-querying)
+  // ── Sync "now" for past-time filtering (updates every 60s to avoid excess re-renders)
   const [clientNow, setClientNow] = useState(() => Date.now());
   useEffect(() => {
-    const timer = setInterval(() => setClientNow(Date.now()), 15000);
+    const timer = setInterval(() => setClientNow(Date.now()), 60000);
     return () => clearInterval(timer);
   }, []);
 

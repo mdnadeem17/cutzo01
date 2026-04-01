@@ -77,6 +77,7 @@ export const removeSavedShop = mutation({
 export const getActiveOffers = query({
   args: { city: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    const nowIso = new Date().toISOString();
     if (args.city) {
       // Return specific to city
       const cityOffers = await ctx.db
@@ -84,10 +85,13 @@ export const getActiveOffers = query({
         .withIndex("by_city", (q) => q.eq("city", args.city))
         .collect();
       
-      if (cityOffers.length > 0) return cityOffers;
+      // Bug 14: filter out expired offers before returning
+      const activeCity = cityOffers.filter(o => o.expiryDate > nowIso);
+      if (activeCity.length > 0) return activeCity;
     }
-    // Fallback: return any global or local offers
-    return await ctx.db.query("offers").take(10);
+    // Fallback: return any global or local offers that haven't expired
+    const all = await ctx.db.query("offers").take(20);
+    return all.filter(o => o.expiryDate > nowIso);
   },
 });
 
@@ -105,7 +109,7 @@ export const seedOffers = mutation({
       });
       await ctx.db.insert("offers", {
         title: "Weekend Special",
-        discount: "₹50 Coshback",
+        discount: "₹50 Cashback",
         expiryDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
         city: "Global",
         applicableShops: [],
@@ -196,10 +200,12 @@ export const clearUserNotifications = mutation({
     if (!identity) throw new Error("Unauthenticated");
     if (identity.subject !== args.userId) throw new Error("Unauthorized");
 
+    // Bug 10: use .take(100) to avoid hitting transaction limits for users
+    // with large numbers of notifications. 100 is a safe practical cap.
     const notifications = await ctx.db
       .query("notifications")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .collect();
+      .take(100);
     
     for (const n of notifications) {
       await ctx.db.delete(n._id);

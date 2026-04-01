@@ -10,6 +10,8 @@
 
 import type * as auth_actions from "../auth_actions.js";
 import type * as bookings from "../bookings.js";
+import type * as cleanup from "../cleanup.js";
+import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as migrations from "../migrations.js";
 import type * as profile from "../profile.js";
@@ -29,6 +31,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth_actions: typeof auth_actions;
   bookings: typeof bookings;
+  cleanup: typeof cleanup;
+  crons: typeof crons;
   http: typeof http;
   migrations: typeof migrations;
   profile: typeof profile;

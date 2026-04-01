@@ -54,6 +54,8 @@ interface SetupDraft {
   authProvider: "phone" | "google";
   username?: string;
   password?: string;
+  blockedDates?: { date: string; reason?: string }[];
+  imageStorageId?: string; // ID from Convex Storage
 }
 
 const hourOptions = [
@@ -106,6 +108,8 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
   const [setupDraft, setSetupDraft] = useState<SetupDraft>(createDraft());
   const [errorMessage, setErrorMessage] = useState("");
   const [isLocating, setIsLocating] = useState(false);
+
+  const generateUploadUrl = useMutation(api.shops.generateUploadUrl);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
@@ -115,6 +119,7 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
   
   const upsertShop = useAction(api.auth_actions.upsertShop);
   const loginMutation = useAction(api.auth_actions.loginShopOwner);
+  const syncShopUidMutation = useMutation(api.shops.syncShopOwnerUid);
 
   // Check returning shop in Convex after sign-in
   const existingShop = useQuery(
@@ -193,11 +198,27 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
     if (Capacitor.isNativePlatform()) {
       try {
         const result = await FirebaseAuthentication.signInWithGoogle();
+        
+        // BUG 4 & 7 FIX: Sync Native Auth Token to Web JS SDK
+        if (result.credential?.idToken) {
+          // Standard path: use idToken to link native session to Web SDK
+          const cred = GoogleAuthProvider.credential(result.credential.idToken);
+          await signInWithCredential(auth, cred);
+        } else {
+          // Fallback: if native login succeeded but no idToken, force-refresh the
+          // existing auth session so the Web SDK has a valid token for Convex.
+          if (auth.currentUser) {
+            await auth.currentUser.getIdToken(true);
+          } else {
+            // Neither path worked — show an error
+            setErrorMessage("Google Sign-In did not return credentials. Please try again.");
+            setIsLoggingIn(false);
+            return;
+          }
+        }
+
         if (result.user) {
           const user = result.user;
-          
-
-
           setFirebaseUid(user.uid);
           setSetupDraft(createDraft({ 
             authProvider: "google",
@@ -209,7 +230,6 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
       } catch (error: any) {
         console.error("Firebase Native Google Login failed:", error);
         setErrorMessage(formatError(error));
-      } finally {
         setIsLoggingIn(false);
       }
       return;
@@ -245,8 +265,11 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
     setIsLoggingIn(true);
 
     try {
-      const hash = await hashPassword(loginPassword.trim());
-      const result = await loginMutation({ username: loginUsername.trim(), password: hash });
+      // Bug 1 & 11: Do NOT pre-hash the password on the client.
+      // The server uses bcrypt which needs the raw plaintext to compare correctly.
+      // Pre-hashing (SHA-256) breaks bcrypt comparison and breaks the lazy-migration
+      // plaintext upgrade path.
+      const result = await loginMutation({ username: loginUsername.trim(), password: loginPassword.trim() });
 
       if (!result.success) {
         if (result.error === "pending") {
@@ -259,6 +282,16 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
 
       // result.shop is already sanitized (no password/username) by server
       const safeShop = result.shop!;
+      
+      // CRITICAL BUG FIX (Manual Login UID Sychronization): 
+      // Manual login doesn't inherently notify the identity token.
+      // We must explicitly register this account's ownerId to the current token.
+      try {
+        await syncShopUidMutation({ shopId: safeShop._id, ownerId: safeShop.ownerId });
+      } catch (e) {
+        console.warn("UID Sync failed, but proceeding login:", e);
+      }
+
       const record: ShopOwnerRecord = {
         userId: safeShop.ownerId,
         role: "shop_owner",
@@ -326,13 +359,28 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
 
     try {
       const compressedBase64 = await compressImage(file);
+      
+      // Upload to Convex File Storage
+      const base64Response = await fetch(compressedBase64);
+      const blob = await base64Response.blob();
+      
+      const uploadUrl = await generateUploadUrl();
+      const result = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "image/jpeg" },
+        body: blob,
+      });
+      
+      const { storageId } = await result.json();
+
       setSetupDraft((current) => ({
         ...current,
-        image: compressedBase64,
+        imageStorageId: storageId,
+        image: undefined, // Clear old base64 if reusing Draft
       }));
     } catch (e) {
-      console.error("Image compression failed:", e);
-      setErrorMessage("Failed to process the image. Please try a different one.");
+      console.error("Image upload failed:", e);
+      setErrorMessage("Failed to upload the image. Please try a different one.");
     }
   };
 
@@ -404,8 +452,6 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
       const lng = gpsMatch ? Number(gpsMatch[2]) : 0;
       const nextSlot = availabilitySlots.find((s) => s.enabled)?.time ?? "Not available";
 
-      const pwdHash = await hashPassword(setupDraft.password);
-
       // Write to Convex global database so all customers can see this shop
       await upsertShop({
         ownerId: userRecord.userId,
@@ -415,6 +461,7 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
         lng,
         phone: userRecord.phone,
         image: userRecord.image,
+        imageStorageId: setupDraft.imageStorageId,
         images: userRecord.images,
         services: serviceCatalog.map(s => ({
           name: s.name,
@@ -429,7 +476,7 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
         locationLabel: userRecord.location,
         blockedDates: [],
         username: setupDraft.username.trim(),
-        password: pwdHash,
+        password: setupDraft.password, // Send raw password so backend can bcrypt it correctly
         status: "pending",
         firebaseUid: firebaseUid || undefined,
       });
@@ -667,11 +714,25 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
                   <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
                 </label>
 
-                {setupDraft.image && (
-                  <div className="mt-3 overflow-hidden rounded-[18px] bg-muted">
-                    <img src={setupDraft.image} alt="Shop preview" className="h-32 w-full object-cover" />
-                  </div>
-                )}
+                <div className="flex w-full items-center gap-3">
+                  {(setupDraft.imageStorageId || setupDraft.image) && (
+                    <div className="relative shrink-0 mt-3">
+                      <div className="h-[60px] w-[60px] overflow-hidden rounded-[16px] border border-slate-100 shadow-sm">
+                        <img
+                          src={setupDraft.image || "https://img.freepik.com/free-vector/shop-with-sign-we-are-open_23-2148547718.jpg"}
+                          alt="Shop"
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                      <button
+                        onClick={() => setSetupDraft((c) => ({ ...c, image: "", imageStorageId: undefined }))}
+                        className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-white"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="pt-4 border-t border-border mt-4">

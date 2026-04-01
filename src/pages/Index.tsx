@@ -93,29 +93,36 @@ type NavDir = "forward" | "back";
 const BACK_SCREENS = new Set<Screen>(["home", "splash", "value"]);
 
 const SCREEN_TRANSITION = {
-  duration: 0.35,
-  ease: [0.22, 1, 0.36, 1] as const,
-  opacity: { duration: 0.25 },
+  duration: 0.25,
+  ease: [0.32, 0.72, 0, 1] as const, // iOS-style deceleration curve
+};
+
+const SCREEN_TRANSITION_BACK = {
+  duration: 0.22,
+  ease: [0.32, 0.72, 0, 1] as const,
 };
 
 const screenVariants: Variants = {
   enter: (dir: NavDir) => ({
     opacity: 0,
-    x: dir === "forward" ? "100%" : "-30%",
+    x: dir === "forward" ? "60%" : "-25%",
     zIndex: dir === "forward" ? 20 : 10,
-    transition: SCREEN_TRANSITION,
+    // Force GPU layer from the start to avoid first-frame paint jank
+    willChange: "transform, opacity" as const,
   }),
   center: {
     opacity: 1,
     x: "0%",
     zIndex: 20,
     transition: SCREEN_TRANSITION,
+    willChange: "auto" as const,
   },
   exit: (dir: NavDir) => ({
-    opacity: 0,
-    x: dir === "forward" ? "-30%" : "100%",
+    opacity: dir === "forward" ? 0 : 0.6,
+    x: dir === "forward" ? "-20%" : "60%",
     zIndex: dir === "forward" ? 10 : 20,
-    transition: SCREEN_TRANSITION,
+    transition: dir === "forward" ? SCREEN_TRANSITION : SCREEN_TRANSITION_BACK,
+    willChange: "transform, opacity" as const,
   }),
 };
 
@@ -153,10 +160,10 @@ function AppInner() {
   const rescheduleBookingMutation = useMutation(api.bookings.rescheduleBooking);
   const submitReviewMutation = useMutation(api.reviews.submitReview);
 
-  // Auto-advance past splash screen
+  // Auto-advance past splash screen faster to improve startup time
   useEffect(() => {
     if (screen === "splash") {
-      const timeoutId = setTimeout(() => setScreen("value"), 1800);
+      const timeoutId = setTimeout(() => setScreen("value"), 600);
       return () => clearTimeout(timeoutId);
     }
   }, [screen]);
