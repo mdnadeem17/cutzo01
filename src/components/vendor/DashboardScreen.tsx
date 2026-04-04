@@ -1,12 +1,16 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, BarChart3, Calendar, Check, Clock, Play, Settings, Wallet, X } from "lucide-react";
 import { useState } from "react";
-import TrimoHeader from "./TrimoHeader";
+import CutzoHeader from "./CutzoHeader";
 import { VendorBooking } from "./types";
 import { bookingStatusStyles, formatCurrency } from "./utils";
 import OtpVerificationModal from "./OtpVerificationModal";
+import WalkInModal from "./WalkInModal";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 
 interface Props {
+  ownerId: string;
   shopName: string;
   dateLabel: string;
   todayBookings: VendorBooking[];
@@ -79,29 +83,43 @@ function StatCard({
   theme: "blue" | "green" | "orange";
 }) {
   const themes = {
-    blue: { bg: "bg-blue-500", text: "text-blue-500", light: "bg-blue-500/10" },
-    green: { bg: "bg-green-500", text: "text-green-500", light: "bg-green-500/10" },
-    orange: { bg: "bg-orange-500", text: "text-orange-500", light: "bg-orange-500/10" },
+    blue: { 
+      accent: "text-blue-600", 
+      bg: "bg-blue-50/50", 
+      iconBg: "bg-blue-100", 
+      glow: "group-hover:shadow-blue-200/50" 
+    },
+    green: { 
+      accent: "text-emerald-600", 
+      bg: "bg-emerald-50/50", 
+      iconBg: "bg-emerald-100", 
+      glow: "group-hover:shadow-emerald-200/50" 
+    },
+    orange: { 
+      accent: "text-amber-600", 
+      bg: "bg-amber-50/50", 
+      iconBg: "bg-amber-100", 
+      glow: "group-hover:shadow-amber-200/50" 
+    },
   };
   const t = themes[theme];
 
   return (
     <motion.div
       whileTap={{ scale: 0.95 }}
-      className="flex flex-col items-center justify-center rounded-[16px] bg-white p-4 shadow-[0_4px_20px_rgb(0,0,0,0.05)] border border-border/50"
+      className="group flex flex-col items-center justify-center rounded-[24px] bg-white p-5 border border-slate-100 shadow-[0_10px_30px_rgba(0,0,0,0.02)] transition-all hover:shadow-2xl hover:-translate-y-1"
     >
-      <div className={`mb-3 flex h-10 w-10 items-center justify-center rounded-full ${t.light}`}>
-        <Icon className={`h-5 w-5 ${t.text}`} />
+      <div className={`mb-3 flex h-11 w-11 items-center justify-center rounded-2xl transition-transform group-hover:scale-110 ${t.iconBg}`}>
+        <Icon className={`h-5 w-5 ${t.accent}`} />
       </div>
       <motion.p
-        initial={{ opacity: 0, y: 5 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.2 }}
-        className="text-2xl font-black tracking-tight text-foreground"
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className={`text-2xl font-black tracking-tight text-slate-900`}
       >
         {value}
       </motion.p>
-      <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+      <p className="mt-1 text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">
         {label}
       </p>
     </motion.div>
@@ -109,6 +127,7 @@ function StatCard({
 }
 
 export default function DashboardScreen({
+  ownerId,
   shopName,
   dateLabel,
   todayBookings,
@@ -129,6 +148,41 @@ export default function DashboardScreen({
 }: Props) {
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [showWalkInModal, setShowWalkInModal] = useState(false);
+  const [isWalkInLoading, setIsWalkInLoading] = useState(false);
+
+  const barberStatus = useQuery(api.walkIns.getBarberStatus, ownerId ? { ownerId } : "skip");
+  const startWalkIn = useMutation(api.walkIns.startWalkIn);
+  const finishWalkIn = useMutation(api.walkIns.finishWalkIn);
+  const cancelWalkIn = useMutation(api.walkIns.cancelWalkIn);
+
+  const handleStartWalkIn = async (serviceName: string, duration: number) => {
+    try {
+      setIsWalkInLoading(true);
+      await startWalkIn({ ownerId, serviceName, estimatedDuration: duration });
+      setShowWalkInModal(false);
+    } catch (e: any) {
+      alert("Error: " + e.message);
+    } finally {
+      setIsWalkInLoading(false);
+    }
+  };
+
+  const handleFinishWalkIn = async (walkInId: string) => {
+    try {
+      await finishWalkIn({ ownerId, walkInId: walkInId as any });
+    } catch (e: any) {
+      alert("Error: " + e.message);
+    }
+  };
+
+  const handleCancelWalkIn = async (walkInId: string) => {
+    try {
+      await cancelWalkIn({ ownerId, walkInId: walkInId as any });
+    } catch (e: any) {
+      alert("Error: " + e.message);
+    }
+  };
 
   const handleVerifySubmit = async (otp: number) => {
     if (!verifyingId) return;
@@ -152,7 +206,7 @@ export default function DashboardScreen({
       transition={{ duration: 0.3 }}
     >
       {/* Top Header */}
-      <TrimoHeader
+      <CutzoHeader
         title={shopName}
         subtitle={dateLabel}
         rightButtonText="View Queue"
@@ -178,6 +232,147 @@ export default function DashboardScreen({
           <StatCard label="Today" value={`${todayBookings.length}`} Icon={Calendar} theme="blue" />
           <StatCard label="Earnings" value={`₹${earningsToday}`} Icon={Wallet} theme="green" />
           <StatCard label="Pending" value={`${pendingCount}`} Icon={Clock} theme="orange" />
+        </motion.div>
+
+        {/* Premium Live Status Widget */}
+        <motion.div 
+          layout
+          className="relative overflow-hidden rounded-[28px] bg-white border border-slate-100 shadow-[0_20px_50px_rgba(0,0,0,0.04)]"
+        >
+          {/* Subtle Background Glow */}
+          <div className={`absolute top-0 right-0 w-32 h-32 blur-[60px] opacity-20 pointer-events-none -mr-16 -mt-16 ${barberStatus?.currentStatus === "busy" ? "bg-red-500" : "bg-emerald-500"}`} />
+          
+          <div className="p-6 relative z-10">
+            {/* Header Area */}
+            <div className="flex items-start justify-between mb-6">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className={`h-2 w-2 rounded-full ${barberStatus?.currentStatus === "busy" ? "bg-red-500 animate-pulse" : "bg-emerald-500"}`} />
+                  <span className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground/80">Live Now</span>
+                </div>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight leading-none">
+                  Shop Availability
+                </h3>
+              </div>
+              
+              <div className="flex flex-col items-end">
+                <div className={`px-4 py-2 rounded-2xl text-[11px] font-black uppercase tracking-widest border transition-all duration-500 ${barberStatus?.currentStatus === "busy" ? "bg-red-50 text-red-600 border-red-100" : "bg-emerald-50 text-emerald-600 border-emerald-100"}`}>
+                  {barberStatus?.currentStatus === "busy" ? "Occupied" : "Available"}
+                </div>
+                <span className="text-[9px] font-bold text-slate-400 mt-2 tracking-wider">
+                  {barberStatus?.capacity?.occupied || 0} / {barberStatus?.capacity?.total || 1} CHAIRS FILLED
+                </span>
+              </div>
+            </div>
+
+            {/* Content Area */}
+            <AnimatePresence mode="wait">
+              {barberStatus?.activeSessions && barberStatus.activeSessions.length > 0 ? (
+                <motion.div 
+                  key="busy"
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  className="space-y-4"
+                >
+                  {barberStatus.activeSessions.map((session: any) => (
+                    <div key={session.id} className="group relative overflow-hidden bg-slate-50/50 rounded-[22px] border border-slate-100/80 p-5 transition-all hover:bg-white hover:border-slate-200 hover:shadow-xl hover:shadow-slate-200/20">
+                      <div className="flex justify-between items-start">
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg ${session.type === 'walk-in' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                              {session.type === 'walk-in' ? 'Walk-in' : 'Online'}
+                            </span>
+                            <span className="text-[10px] font-bold text-slate-400">• Current Session</span>
+                          </div>
+                          
+                          <div>
+                            <h4 className="text-xl font-black text-slate-900 tracking-tight">{session.serviceName || "Premium Haircut"}</h4>
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <Clock className="w-3 h-3 text-slate-400" />
+                              <p className="text-xs font-bold text-slate-500">Scheduled task</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Finishing At</p>
+                          <div className="bg-white px-3 py-1.5 rounded-xl border border-slate-100 shadow-sm inline-block">
+                            <p className="text-sm font-black text-indigo-600">
+                              {new Date(session.busyUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-2.5 mt-6">
+                        {session.type === "online" ? (
+                          <motion.button
+                            whileTap={{ scale: 0.97 }}
+                            onClick={async () => {
+                              try {
+                                await onCompleteBooking(session.id);
+                              } catch (e: any) {
+                                alert("Error: " + e.message);
+                              }
+                            }}
+                            className="w-full flex justify-center items-center gap-2.5 bg-slate-900 hover:bg-black text-white rounded-[16px] h-12 text-xs font-black uppercase tracking-widest shadow-lg shadow-slate-900/10 active:scale-95 transition-all"
+                          >
+                            <Check className="w-4 h-4 text-emerald-400" /> Finish Service
+                          </motion.button>
+                        ) : (
+                          <>
+                            <motion.button
+                              whileTap={{ scale: 0.97 }}
+                              onClick={() => handleCancelWalkIn(session.id)}
+                              className="flex-1 flex justify-center items-center gap-2.5 bg-white hover:bg-red-50 text-red-500 border border-slate-100 rounded-[16px] h-12 text-xs font-black uppercase tracking-widest active:scale-95 transition-all"
+                            >
+                              <X className="w-4 h-4" /> Cancel
+                            </motion.button>
+                            <motion.button
+                              whileTap={{ scale: 0.97 }}
+                              onClick={() => handleFinishWalkIn(session.id)}
+                              className="flex-[1.5] flex justify-center items-center gap-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-[16px] h-12 text-xs font-black uppercase tracking-widest shadow-lg shadow-indigo-200 active:scale-95 transition-all"
+                            >
+                              <Check className="w-4 h-4" /> Complete
+                            </motion.button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </motion.div>
+              ) : (
+                <motion.div 
+                  key="idle"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="flex flex-col items-center justify-center py-8 text-center"
+                >
+                  <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-emerald-50 mb-4 animate-pulse">
+                    <Check className="h-8 w-8 text-emerald-500" />
+                  </div>
+                  <h4 className="text-xl font-black text-slate-900 mb-1">Available to Serve</h4>
+                  <p className="text-xs font-bold text-slate-400 max-w-[200px] leading-relaxed"> No active sessions. Your shop is ready for the next customer.</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="mt-8">
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                onClick={() => setShowWalkInModal(true)}
+                disabled={barberStatus?.currentStatus === "busy"}
+                className="w-full flex justify-center items-center gap-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-300 text-white rounded-[20px] h-[60px] text-sm font-black uppercase tracking-[0.1em] shadow-xl shadow-indigo-100 active:scale-95 transition-all"
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/20">
+                  <Play className="w-4 h-4 fill-white" />
+                </div>
+                New Walk-In Session
+              </motion.button>
+            </div>
+          </div>
         </motion.div>
 
         {/* Action Cards */}
@@ -396,6 +591,13 @@ export default function DashboardScreen({
         isLoading={isVerifying}
         onClose={() => setVerifyingId(null)}
         onSubmit={handleVerifySubmit}
+      />
+
+      <WalkInModal
+        isOpen={showWalkInModal}
+        isLoading={isWalkInLoading}
+        onClose={() => setShowWalkInModal(false)}
+        onSubmit={handleStartWalkIn}
       />
     </motion.div>
   );

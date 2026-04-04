@@ -1,5 +1,5 @@
 /**
- * Standardized time parsing and comparison for TRIMO
+ * Standardized time parsing and comparison for CUTZO
  */
 
 /** "HH:mm" (24h) → total minutes since midnight */
@@ -31,7 +31,7 @@ export function minsToTime24(mins: number): string {
 /** "HH:mm" (24h) → "hh:mm AM/PM" */
 export function time24To12(t24: string): string {
   const parts = t24.split(":");
-  let h = parseInt(parts[0], 10);
+  const h = parseInt(parts[0], 10);
   const m = parseInt(parts[1], 10);
   const suffix = h >= 12 ? "PM" : "AM";
   const h12 = h % 12 === 0 ? 12 : h % 12;
@@ -49,15 +49,13 @@ export function time24To12(t24: string): string {
  * converted to UTC by the JS engine — making both sides comparable in UTC ms.
  * Previously, hardcoding `+05:30` (IST) caused a 5.5h error for non-IST users.
  */
-export function isPastTime(date: string, time: string, nowMs: number): boolean {
+export function isPastTime(date: string, time: string, nowMs: number, tzOffset: number = 0): boolean {
   try {
-    const slotDate = new Date(`${date}T${time}:00`);
-    
-    if (isNaN(slotDate.getTime())) {
-      return false; // Don't block if we can't parse
-    }
-
-    return slotDate.getTime() < nowMs;
+    const [year, month, day] = date.split("-").map(Number);
+    const [h, m] = time.split(":").map(Number);
+    // Parse it as UTC, then apply the offset to get true absolute milliseconds
+    const slotTrueAbsoluteMs = Date.UTC(year, month - 1, day, h, m) + (tzOffset * 60000);
+    return slotTrueAbsoluteMs < nowMs;
   } catch (e) {
     return false;
   }
@@ -72,3 +70,4 @@ export function isDuring(time: string, start: string, end: string): boolean {
   const e = timeToMins(end);
   return t >= s && t < e;
 }
+

@@ -155,7 +155,7 @@ export const seedNotifications = mutation({
     if (existing.length === 0) {
       await ctx.db.insert("notifications", {
         userId: args.userId,
-        title: "Welcome to TRIMO",
+        title: "Welcome to CUTZO",
         message: "Your profile is set up successfully. Book your first haircut now!",
         type: "system",
         isRead: false,
@@ -212,3 +212,4 @@ export const clearUserNotifications = mutation({
     }
   },
 });
+

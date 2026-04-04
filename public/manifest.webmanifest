@@ -1,6 +1,6 @@
 {
-  "name": "TRIMO",
-  "short_name": "TRIMO",
+  "name": "CUTZO",
+  "short_name": "CUTZO",
   "description": "Find nearby barber shops, compare fixed pricing, and book a slot in seconds.",
   "start_url": "/",
   "scope": "/",
@@ -10,21 +10,46 @@
   "theme_color": "#1E3A8A",
   "icons": [
     {
-      "src": "/pwa-192.png",
+      "src": "../icons/icon-48.webp",
+      "type": "image/png",
+      "sizes": "48x48",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "../icons/icon-72.webp",
+      "type": "image/png",
+      "sizes": "72x72",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "../icons/icon-96.webp",
+      "type": "image/png",
+      "sizes": "96x96",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "../icons/icon-128.webp",
+      "type": "image/png",
+      "sizes": "128x128",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "../icons/icon-192.webp",
+      "type": "image/png",
       "sizes": "192x192",
-      "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/pwa-512.png",
+      "src": "../icons/icon-256.webp",
+      "type": "image/png",
+      "sizes": "256x256",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "../icons/icon-512.webp",
+      "type": "image/png",
       "sizes": "512x512",
-      "type": "image/png",
       "purpose": "any maskable"
-    },
-    {
-      "src": "/apple-touch-icon.png",
-      "sizes": "180x180",
-      "type": "image/png"
     }
   ]
 }

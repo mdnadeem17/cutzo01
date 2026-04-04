@@ -11,6 +11,7 @@ export default defineSchema({
     gpsLocation: v.optional(v.string()),
     phone: v.optional(v.string()),
     role: v.optional(v.union(v.literal("customer"), v.literal("shop_owner"))),
+    fcmToken: v.optional(v.string()), // added for push notifications
     createdAt: v.optional(v.string()),
   }).index("by_uid", ["uid"])
     .index("by_firebase_uid", ["firebaseUid"])
@@ -48,6 +49,7 @@ export default defineSchema({
     locationLabel: v.optional(v.string()),
     status: v.optional(v.union(v.literal("pending"), v.literal("approved"), v.literal("rejected"))),
     firebaseUid: v.optional(v.string()), // Firebase Auth linking
+    fcmToken: v.optional(v.string()), // added for push notifications
     // Credentials-based login fields (shop owner username/password setup)
     username: v.optional(v.string()),
     password: v.optional(v.string()),
@@ -68,7 +70,8 @@ export default defineSchema({
   savedShops: defineTable({
     userId: v.string(),
     shopId: v.id("shops"),
-  }).index("by_user", ["userId"]),
+  }).index("by_user", ["userId"])
+    .index("by_user_shop", ["userId", "shopId"]),
 
   offers: defineTable({
     title: v.string(),
@@ -157,4 +160,23 @@ export default defineSchema({
     endpoint: v.string(),
     timestamp: v.number(),
   }).index("by_user_endpoint_time", ["userId", "endpoint", "timestamp"]),
+
+  walkIns: defineTable({
+    shopId: v.id("shops"),
+    serviceName: v.string(),
+    startTime: v.number(), // timestamp
+    estimatedDuration: v.number(), // minutes
+    calculatedFinishTime: v.number(), // timestamp
+    status: v.union(v.literal("active"), v.literal("completed"), v.literal("cancelled")),
+  }).index("by_shop", ["shopId"])
+    .index("by_status", ["status"]),
+
+  barberStatus: defineTable({
+    shopId: v.id("shops"),
+    currentStatus: v.union(v.literal("idle"), v.literal("busy")),
+    busyUntil: v.number(), // timestamp
+    currentServiceType: v.optional(v.string()),
+    currentCustomerType: v.optional(v.union(v.literal("walk-in"), v.literal("online"))),
+    activeItemId: v.optional(v.string()), // ID of the walkIn or booking
+  }).index("by_shop", ["shopId"]),
 });

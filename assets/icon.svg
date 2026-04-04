@@ -1,0 +1,34 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Background Gradient (Electric Purple to Blue/Cyan) -->
+    <linearGradient id="primaryGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8F00FF" />
+      <stop offset="100%" stop-color="#3D8CFF" />
+    </linearGradient>
+
+    <!-- Mask to create the diagonal curved slash cutout -->
+    <mask id="cutMask">
+      <rect width="1024" height="1024" fill="white" />
+      <!-- The sweeping diagonal transparent slash -->
+      <path d="M 120 900 Q 512 650 820 200 L 780 180 Q 512 600 100 860 Z" fill="black" />
+    </mask>
+
+    <!-- Soft drop shadow for the Z -->
+    <filter id="dropshadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="15" stdDeviation="25" flood-opacity="0.15" />
+    </filter>
+  </defs>
+
+  <!-- Solid App Icon Background with smooth rounded corners -->
+  <rect width="1024" height="1024" rx="224" fill="url(#primaryGrad)" />
+
+  <!-- The Z Logo clipped by the slash mask and projecting shadow -->
+  <g mask="url(#cutMask)" filter="url(#dropshadow)">
+    <!-- Top horizontal bar -->
+    <path d="M 280 340 L 744 340" stroke="white" stroke-width="150" stroke-linecap="round" />
+    <!-- Diagonal stroke -->
+    <path d="M 744 340 L 280 684" stroke="white" stroke-width="150" stroke-linejoin="miter" />
+    <!-- Bottom horizontal bar -->
+    <path d="M 280 684 L 744 684" stroke="white" stroke-width="150" stroke-linecap="round" />
+  </g>
+</svg>

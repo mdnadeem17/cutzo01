@@ -4,17 +4,17 @@ import { App } from "@capacitor/app";
 import { auth } from "../lib/firebase";
 import { AnimatePresence, motion, Variants } from "framer-motion";
 import { toast } from "sonner";
-import ActivityScreen from "@/components/trimo/ActivityScreen";
-import BookingConfirmationScreen from "@/components/trimo/BookingConfirmationScreen";
-import BottomNav from "@/components/trimo/BottomNav";
-import CustomerAuthModal from "@/components/trimo/CustomerAuthModal";
-import HomeScreen from "@/components/trimo/HomeScreen";
-import HowItWorksScreen from "@/components/trimo/HowItWorksScreen";
-import ProfileScreen from "@/components/trimo/ProfileScreen";
-import ServiceSelectionScreen from "@/components/trimo/ServiceSelectionScreen";
-import ShopDetailScreen from "@/components/trimo/ShopDetailScreen";
-import SplashScreen from "@/components/trimo/SplashScreen";
-import SuccessScreen from "@/components/trimo/SuccessScreen";
+import ActivityScreen from "@/components/cutzo/ActivityScreen";
+import BookingConfirmationScreen from "@/components/cutzo/BookingConfirmationScreen";
+import BottomNav from "@/components/cutzo/BottomNav";
+import CustomerAuthModal from "@/components/cutzo/CustomerAuthModal";
+import HomeScreen from "@/components/cutzo/HomeScreen";
+import HowItWorksScreen from "@/components/cutzo/HowItWorksScreen";
+import ProfileScreen from "@/components/cutzo/ProfileScreen";
+import ServiceSelectionScreen from "@/components/cutzo/ServiceSelectionScreen";
+import ShopDetailScreen from "@/components/cutzo/ShopDetailScreen";
+import SplashScreen from "@/components/cutzo/SplashScreen";
+import SuccessScreen from "@/components/cutzo/SuccessScreen";
 import {
   AboutScreen,
   HelpScreen,
@@ -23,16 +23,18 @@ import {
   PersonalInfoScreen,
   PrivacyScreen,
   SavedShopsScreen,
-} from "@/components/trimo/ProfileSubScreens";
-import TimeSelectionScreen from "@/components/trimo/TimeSelectionScreen";
-import ValueScreen from "@/components/trimo/ValueScreen";
-import { clearCustomerSession, getActiveCustomer } from "@/components/trimo/authStorage";
-import { CustomerRecord, Review, Screen, Service, Shop } from "@/components/trimo/types";
+} from "@/components/cutzo/ProfileSubScreens";
+import TimeSelectionScreen from "@/components/cutzo/TimeSelectionScreen";
+import ValueScreen from "@/components/cutzo/ValueScreen";
+import { clearCustomerSession, getActiveCustomer } from "@/components/cutzo/authStorage";
+import { CustomerRecord, Review, Screen, Service, Shop } from "@/components/cutzo/types";
+import { getActiveShopOwner } from "@/components/vendor/storage";
 import ShopOwnerPortal from "@/components/vendor/ShopOwnerPortal";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import { formatError } from "@/lib/errorUtils";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 // ─── Error Boundary ───────────────────────────────────────────────────────────
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -92,35 +94,39 @@ type NavDir = "forward" | "back";
 // Screens with a logical "parent" — going to a parent is a back navigation
 const BACK_SCREENS = new Set<Screen>(["home", "splash", "value"]);
 
-const SCREEN_TRANSITION = {
-  duration: 0.25,
-  ease: [0.32, 0.72, 0, 1] as const, // iOS-style deceleration curve
-};
+// ── Screen transitions: pixel-based x offsets keep everything on the GPU
+// compositor layer. Percentage values cause layout recalculation on some
+// Android WebViews, so we use a fixed viewport-width equivalent instead.
+const FORWARD_OFFSET = "100vw";
+const BACK_OFFSET = "-30vw";
 
+const SCREEN_TRANSITION = {
+  duration: 0.28,
+  ease: [0.25, 0.46, 0.45, 0.94] as const,
+};
 const SCREEN_TRANSITION_BACK = {
-  duration: 0.22,
-  ease: [0.32, 0.72, 0, 1] as const,
+  duration: 0.24,
+  ease: [0.25, 0.46, 0.45, 0.94] as const,
 };
 
 const screenVariants: Variants = {
   enter: (dir: NavDir) => ({
-    opacity: 0,
-    x: dir === "forward" ? "60%" : "-25%",
+    opacity: dir === "forward" ? 0.3 : 0.7,
+    x: dir === "forward" ? FORWARD_OFFSET : BACK_OFFSET,
     zIndex: dir === "forward" ? 20 : 10,
-    // Force GPU layer from the start to avoid first-frame paint jank
     willChange: "transform, opacity" as const,
   }),
   center: {
     opacity: 1,
-    x: "0%",
+    x: "0vw",
     zIndex: 20,
     transition: SCREEN_TRANSITION,
     willChange: "auto" as const,
   },
   exit: (dir: NavDir) => ({
-    opacity: dir === "forward" ? 0 : 0.6,
-    x: dir === "forward" ? "-20%" : "60%",
-    zIndex: dir === "forward" ? 10 : 20,
+    opacity: dir === "forward" ? 0 : 0.5,
+    x: dir === "forward" ? "-25vw" : FORWARD_OFFSET,
+    zIndex: dir === "forward" ? 10 : 5,
     transition: dir === "forward" ? SCREEN_TRANSITION : SCREEN_TRANSITION_BACK,
     willChange: "transform, opacity" as const,
   }),
@@ -144,6 +150,11 @@ function AppInner() {
   const [authIntent, setAuthIntent] = useState<AuthIntent>(null);
   const [selectedShop, setSelectedShop] = useState<Shop | null>(null);
   const [selectedServices, setSelectedServices] = useState<Service[]>([]);
+
+  // Native Push Notifications Setup
+  usePushNotifications({
+    customerUid: customer?.userId,
+  });
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
   const [confirmedBooking, setConfirmedBooking] = useState<{
@@ -160,10 +171,10 @@ function AppInner() {
   const rescheduleBookingMutation = useMutation(api.bookings.rescheduleBooking);
   const submitReviewMutation = useMutation(api.reviews.submitReview);
 
-  // Auto-advance past splash screen faster to improve startup time
+  // Auto-advance past splash screen — long enough for the premium animation sequence
   useEffect(() => {
     if (screen === "splash") {
-      const timeoutId = setTimeout(() => setScreen("value"), 600);
+      const timeoutId = setTimeout(() => setScreen("value"), 2800);
       return () => clearTimeout(timeoutId);
     }
   }, [screen]);
@@ -417,8 +428,11 @@ function AppInner() {
         <ShopOwnerPortal onBackToCustomer={handleExitVendor} />
       ) : (
         <div className="customer-theme w-full min-h-screen">
-          <div className="grid grid-cols-1 grid-rows-1 relative min-h-screen overflow-x-hidden">
-            <AnimatePresence initial={false} custom={navDir} mode="popLayout">
+          <div
+            className="grid grid-cols-1 grid-rows-1 relative min-h-screen overflow-x-hidden"
+            style={{ isolation: "isolate", transform: "translateZ(0)" }}
+          >
+            <AnimatePresence initial={false} custom={navDir} mode="sync">
               <motion.div
                 key={screen}
                 custom={navDir}
@@ -426,7 +440,17 @@ function AppInner() {
                 initial="enter"
                 animate="center"
                 exit="exit"
-                className="col-start-1 row-start-1 w-full bg-background"
+                className="col-start-1 row-start-1 w-full"
+                style={{
+                  // Always show a dark base so there is never a white flash
+                  // between screens. Individual screens paint over this.
+                  backgroundColor:
+                    screen === "splash" || screen === "value"
+                      ? "#12002E"
+                      : "hsl(var(--background))",
+                  backfaceVisibility: "hidden",
+                  WebkitBackfaceVisibility: "hidden",
+                }}
               >
                 {screen === "splash" && <SplashScreen />}
 

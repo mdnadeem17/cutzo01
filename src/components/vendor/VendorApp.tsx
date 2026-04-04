@@ -170,7 +170,8 @@ export default function VendorApp({ onExit, onLogout, ownerRecord, onOwnerRecord
   const showBottomNav = mainTabs.includes(screen as VendorTab);
 
   const todayBookings = (bookings ?? []).filter(isBookingToday);
-  const pendingCount = (bookings ?? []).filter((booking) => booking.status === "pending").length;
+  // FIX #10: Only count today's pending bookings, not all-time historical pending
+  const pendingCount = todayBookings.filter((booking) => booking.status === "pending").length;
   const todayEarnings = getTodayEarnings(bookings ?? []);
   const weeklyEarnings = getWeeklyEarnings(bookings);
   const monthlyEarnings = getMonthlyEarnings(bookings);
@@ -314,17 +315,6 @@ export default function VendorApp({ onExit, onLogout, ownerRecord, onOwnerRecord
     syncOwnerRecord(profile, nextServices, workingHours, slotDuration, maxBookingsPerSlot, breakTime, slots, blockedDates);
   };
 
-  const toggleSlot = (id: string) => {
-    const nextSlots = slots.map((slot) => (slot.id === id ? { ...slot, enabled: !slot.enabled } : slot));
-    setSlots(nextSlots);
-    syncOwnerRecord(profile, services, workingHours, slotDuration, maxBookingsPerSlot, breakTime, nextSlots, blockedDates);
-  };
-
-  const toggleAllSlots = (enabled: boolean) => {
-    const nextSlots = slots.map((slot) => ({ ...slot, enabled }));
-    setSlots(nextSlots);
-    syncOwnerRecord(profile, services, workingHours, slotDuration, maxBookingsPerSlot, breakTime, nextSlots, blockedDates);
-  };
 
   const handleSaveProfile = (nextProfile: VendorProfile) => {
     setProfile(nextProfile);
@@ -376,6 +366,7 @@ export default function VendorApp({ onExit, onLogout, ownerRecord, onOwnerRecord
     <>
       {screen === "dashboard" && (
         <DashboardScreen
+          ownerId={ownerRecord?.userId ?? ""}
           shopName={profile.shopName}
           dateLabel={formatHeaderDate()}
           todayBookings={todayBookings}
@@ -431,8 +422,6 @@ export default function VendorApp({ onExit, onLogout, ownerRecord, onOwnerRecord
           breakTime={breakTime}
           blockedDates={blockedDates}
           onBack={() => setScreen("dashboard")}
-          onToggleSlot={toggleSlot}
-          onToggleAllSlots={toggleAllSlots}
           onUpdateSettings={handleUpdateAvailabilitySettings}
           onUpdateMaxBookings={handleUpdateMaxBookings}
           onAddBlockedDate={addBlockedDate}

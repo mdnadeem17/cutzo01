@@ -28,4 +28,11 @@ crons.daily(
   internal.cleanup.cleanupRateLimits
 );
 
+// FIX #2: Expire stale barberStatus records every 15 minutes
+crons.interval(
+  "expire stale barber statuses",
+  { minutes: 15 },
+  internal.walkIns.expireStaleBarberStatuses
+);
+
 export default crons;

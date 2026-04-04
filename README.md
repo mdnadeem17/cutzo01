@@ -1,4 +1,4 @@
-# Trimo Booking Hub
+﻿# Cutzo Booking Hub
 
 A premium, modern barber booking platform built for both customers and shop owners. This project is a hybrid web and mobile application (Android) providing a seamless booking experience.
 
@@ -54,7 +54,7 @@ A premium, modern barber booking platform built for both customers and shop owne
 ## 🛠 Project Structure
 
 ### `/src`
-- **`/components/trimo`**: Core UI components for the customer-facing app.
+- **`/components/cutzo`**: Core UI components for the customer-facing app.
 - **`/components/vendor`**: Dashboard and management components for shop owners.
 - **`/pages`**: Main page entries (Index, NotFound).
 - **`/lib`**: Firebase and utility configurations.
@@ -89,3 +89,4 @@ A premium, modern barber booking platform built for both customers and shop owne
 - **IDOR Protection**: All Convex mutations verify user ownership before modification.
 - **Native Auth**: Uses native Firebase SDK to prevent insecure web-based redirects.
 - **Optimized Assets**: Image compression and lazy-loading for a fast mobile experience.
+

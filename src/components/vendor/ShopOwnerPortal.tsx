@@ -2,6 +2,7 @@ import { useState } from "react";
 import ShopOwnerAuth from "./ShopOwnerAuth";
 import { clearShopOwnerSession, getActiveShopOwner, saveShopOwner, ShopOwnerRecord } from "./storage";
 import VendorApp from "./VendorApp";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 interface Props {
   onBackToCustomer: () => void;
@@ -9,6 +10,8 @@ interface Props {
 
 export default function ShopOwnerPortal({ onBackToCustomer }: Props) {
   const [activeOwner, setActiveOwner] = useState<ShopOwnerRecord | null>(() => getActiveShopOwner());
+
+  usePushNotifications({ ownerId: activeOwner?.userId });
 
   const handleAuthenticated = (user: ShopOwnerRecord) => {
     setActiveOwner(user);

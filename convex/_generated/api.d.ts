@@ -15,12 +15,15 @@ import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as migrations from "../migrations.js";
 import type * as profile from "../profile.js";
+import type * as pushNotifications from "../pushNotifications.js";
+import type * as pushTokens from "../pushTokens.js";
 import type * as rateLimit from "../rateLimit.js";
 import type * as reviews from "../reviews.js";
 import type * as services from "../services.js";
 import type * as shops from "../shops.js";
 import type * as users from "../users.js";
 import type * as utils from "../utils.js";
+import type * as walkIns from "../walkIns.js";
 
 import type {
   ApiFromModules,
@@ -36,12 +39,15 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   migrations: typeof migrations;
   profile: typeof profile;
+  pushNotifications: typeof pushNotifications;
+  pushTokens: typeof pushTokens;
   rateLimit: typeof rateLimit;
   reviews: typeof reviews;
   services: typeof services;
   shops: typeof shops;
   users: typeof users;
   utils: typeof utils;
+  walkIns: typeof walkIns;
 }>;
 
 /**

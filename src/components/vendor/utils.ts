@@ -27,7 +27,7 @@ export const bookingStatusStyles: Record<
     color: "hsl(214 92% 45%)",
     border: "hsl(214 88% 80%)",
   },
-  in_progress: {
+  active: {
     label: "In Progress",
     background: "hsl(270 96% 94%)",
     color: "hsl(270 70% 50%)",
@@ -59,8 +59,12 @@ export const formatFullDate = (value: string) => format(parseISO(value), "MMM d,
 export const formatHourLabel = (value: string) =>
   format(parse(value, "HH:mm", new Date()), "hh:mm a");
 
-export const isBookingToday = (booking: VendorBooking) =>
-  isSameDay(parseISO(booking.date), new Date());
+// FIX #19: Use local date string (YYYY-MM-DD) for comparison to avoid UTC offset issues.
+// new Date().toLocaleDateString("en-CA") returns the date in YYYY-MM-DD format in LOCAL timezone.
+export const isBookingToday = (booking: VendorBooking) => {
+  const todayLocal = new Date().toLocaleDateString("en-CA"); // "YYYY-MM-DD" in local tz
+  return booking.date === todayLocal;
+};
 
 const completedBookings = (bookings: VendorBooking[]) =>
   bookings.filter((booking) => booking.status === "completed");

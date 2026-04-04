@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Calendar, Check, Clock, Play, X } from "lucide-react";
 import { useState } from "react";
 import { isThisWeek, isToday, isTomorrow, parseISO } from "date-fns";
-import TrimoHeader from "./TrimoHeader";
+import CutzoHeader from "./CutzoHeader";
 import { VendorBooking } from "./types";
 import { formatBookingDate, formatCurrency, formatHourLabel } from "./utils";
 import OtpVerificationModal from "./OtpVerificationModal";
@@ -118,7 +118,7 @@ export default function BookingsScreen({
       transition={{ duration: 0.3 }}
     >
       {/* Header */}
-      <TrimoHeader
+      <CutzoHeader
         title="Appointment Requests"
         subtitle="Manage and respond to booking requests"
         rightNode={

@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { format, isToday, isThisWeek, isThisMonth, parseISO } from "date-fns";
 import { VendorBooking } from "./types";
 import { formatBookingDate, formatCurrency } from "./utils";
-import TrimoHeader from "./TrimoHeader";
+import CutzoHeader from "./CutzoHeader";
 
 interface Props {
   todayEarnings: number;
@@ -65,7 +65,7 @@ export default function EarningsScreen({
 
   return (
     <div className="flex min-h-screen flex-col bg-muted pb-[100px]">
-      <TrimoHeader
+      <CutzoHeader
         title="Revenue"
         subtitle="Business Dashboard"
         showBackButton

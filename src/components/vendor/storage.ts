@@ -32,16 +32,16 @@ export interface ShopOwnerRecord {
   firebaseUid?: string;
 }
 
-interface TrimoDatabase {
+interface CutzoDatabase {
   users: Record<string, ShopOwnerRecord>;
 }
 
-const DATABASE_KEY = "trimo_shop_owner_db";
-const SESSION_KEY = "trimo_shop_owner_session";
-const SESSION_EXPIRY_KEY = "trimo_shop_owner_session_expiry";
+const DATABASE_KEY = "cutzo_shop_owner_db";
+const SESSION_KEY = "cutzo_shop_owner_session";
+const SESSION_EXPIRY_KEY = "cutzo_shop_owner_session_expiry";
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
 
-const emptyDatabase = (): TrimoDatabase => ({ users: {} });
+const emptyDatabase = (): CutzoDatabase => ({ users: {} });
 
 const hasWindow = () => typeof window !== "undefined";
 
@@ -52,7 +52,7 @@ const defaultWorkingHours: WorkingHours = {
 
 export const createDefaultAvailabilitySlots = (
   workingHours: WorkingHours,
-  slotDuration: number = 30,
+  slotDuration: number = 10,
   breakTime?: BreakTime | null
 ): AvailabilitySlot[] => {
   const [startHourStr, startMinStr] = workingHours.start.split(":");
@@ -77,7 +77,7 @@ export const createDefaultAvailabilitySlots = (
     breakEndMinutes = Number.parseInt(bEndH, 10) * 60 + Number.parseInt(bEndM, 10);
   }
 
-  const duration = slotDuration > 0 ? slotDuration : 30;
+  const duration = slotDuration > 0 ? slotDuration : 10;
   const slots: AvailabilitySlot[] = [];
   let index = 1;
 
@@ -115,7 +115,7 @@ export const createDefaultServiceCatalog = (
     .map((name, index) => ({
       id: `service-${index + 1}`,
       name,
-      durationMinutes: 30,
+      durationMinutes: 10,
       price: startingPrice > 0 ? startingPrice : 0,
     }));
 
@@ -151,7 +151,7 @@ const normalizeShopOwnerRecord = (user: Partial<ShopOwnerRecord>): ShopOwnerReco
         ? Math.min(...serviceCatalog.map((service) => service.price))
         : user.startingPrice ?? 0,
     workingHours,
-    slotDuration: user.slotDuration ?? 30,
+    slotDuration: user.slotDuration ?? 10,
     maxBookingsPerSlot: user.maxBookingsPerSlot ?? 1,
     breakTime: user.breakTime ?? null,
     availabilitySlots,
@@ -165,7 +165,7 @@ const normalizeShopOwnerRecord = (user: Partial<ShopOwnerRecord>): ShopOwnerReco
   };
 };
 
-export const readDatabase = (): TrimoDatabase => {
+export const readDatabase = (): CutzoDatabase => {
   if (!hasWindow()) {
     return emptyDatabase();
   }
@@ -191,7 +191,7 @@ export const readDatabase = (): TrimoDatabase => {
   }
 };
 
-const writeDatabase = (database: TrimoDatabase) => {
+const writeDatabase = (database: CutzoDatabase) => {
   if (!hasWindow()) {
     return;
   }

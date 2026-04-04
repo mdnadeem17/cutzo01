@@ -500,7 +500,7 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
         >
           <ArrowLeft className="h-5 w-5 text-white" />
         </button>
-        <p className="text-sm font-medium text-light-text">TRIMO Partner</p>
+        <p className="text-sm font-medium text-light-text">CUTZO Partner</p>
         <h1 className="mt-1 text-2xl font-bold text-white">
           {step === "setup" ? "Set up your shop" : "Owner login"}
         </h1>
@@ -595,7 +595,7 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
                     setSetupDraft((current) => ({ ...current, shopName: event.target.value }))
                   }
                   className="h-14 rounded-[16px] border border-border bg-background px-4 text-sm font-medium outline-none"
-                  placeholder="Urban Edge Salon"
+                  placeholder="Your shop's display name"
                 />
               </label>
 
@@ -609,7 +609,7 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
                     setSetupDraft((current) => ({ ...current, ownerName: event.target.value }))
                   }
                   className="h-14 rounded-[16px] border border-border bg-background px-4 text-sm font-medium outline-none"
-                  placeholder="Rahul Mehta"
+                  placeholder="Your full name"
                 />
               </label>
 
@@ -643,7 +643,7 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
                     setSetupDraft((current) => ({ ...current, location: event.target.value }))
                   }
                   className="h-14 rounded-[16px] border border-border bg-background px-4 text-sm font-medium outline-none"
-                  placeholder="Bengaluru"
+                  placeholder="City or area"
                 />
               </label>
 
@@ -748,7 +748,7 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
                     }
                     autoCapitalize="none"
                     className="h-14 rounded-[16px] border border-border bg-background px-4 text-sm font-medium outline-none"
-                    placeholder="E.g. urbanedge"
+                    placeholder="Choose a unique username"
                   />
                 </label>
 
@@ -796,7 +796,7 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
             <div>
               <p className="text-sm font-bold text-foreground">Partner Verification</p>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                All shops go through a quick manual verification before going live on the Trimo marketplace.
+                All shops go through a quick manual verification before going live on the Cutzo marketplace.
               </p>
             </div>
           </div>

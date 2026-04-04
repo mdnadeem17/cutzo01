@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion, useAnimation } from "framer-motion";
 import { ArrowLeft, ArrowRight, ChartBar, Check, Clock, Edit2, Plus, Scissors, Trash2, X } from "lucide-react";
-import TrimoHeader from "./TrimoHeader";
+import CutzoHeader from "./CutzoHeader";
 import { VendorService } from "./types";
 import { formatCurrency } from "./utils";
 
@@ -187,7 +187,7 @@ export default function ServicesScreen({
       transition={{ duration: 0.3 }}
     >
       {/* Top Header */}
-      <TrimoHeader
+      <CutzoHeader
         title="Menu & Pricing"
         subtitle="Professional control panel for shop offerings"
       />
@@ -355,7 +355,7 @@ export default function ServicesScreen({
                 <div className="flex flex-col gap-2">
                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Duration</span>
                   <div className="flex gap-2">
-                    {[15, 30, 45, 60].map((mins) => (
+                    {[10, 15, 20, 25, 30].map((mins) => (
                       <button
                         key={mins}
                         onClick={() => setDraft((d) => ({ ...d, durationMinutes: mins }))}

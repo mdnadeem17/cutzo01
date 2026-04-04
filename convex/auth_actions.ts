@@ -156,7 +156,8 @@ export const loginShopOwner = action({
     }
 
     // Return shop data without sensitive fields
-    const { password: _pw, username: _un, ...safeShopBase } = shop;
+    // FIX #14: Ensure shop password hash and other internal fields specifically are never leaked.
+    const { password: _pw, passwordHash: _ph, ...safeShopBase } = shop;
     const safeShop = { ...safeShopBase, firebaseUid: updatedFirebaseUid };
     return { success: true, shop: safeShop };
   },

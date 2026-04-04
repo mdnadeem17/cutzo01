@@ -3,7 +3,7 @@ import { ConvexReactClient, ConvexProviderWithAuth } from "convex/react";
 import App from "./App.tsx";
 import "./index.css";
 
-import { LoadingProvider } from "./components/trimo/LoadingContext";
+import { LoadingProvider } from "./components/cutzo/LoadingContext";
 import useFirebaseAuth from "./lib/useFirebaseAuth";
 
 const convexUrl = import.meta.env.VITE_CONVEX_URL;

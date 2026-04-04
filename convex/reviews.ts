@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { Id } from "./_generated/dataModel";
 import { checkRateLimit } from "./rateLimit";
 
 // Submit a review for a completed booking.
@@ -58,7 +59,8 @@ export const submitReview = mutation({
 
     // Update shop rating atomically using sum-based averaging to prevent drift
     const newTotalReviews = (shop.totalReviews || 0) + 1;
-    const newTotalSum = (shop.totalRatingSum || (shop.rating * shop.totalReviews)) + args.rating;
+    // FIX #4: Use ?? instead of || so an intentional 0 isn't bypassed
+    const newTotalSum = (shop.totalRatingSum ?? (shop.rating * shop.totalReviews)) + args.rating;
     const newRating = newTotalSum / newTotalReviews;
 
     // Actually insert the universal review doc
@@ -115,7 +117,8 @@ export const getReviewedBookingIds = query({
     // but our new submitReview inserts it (wait, I should check schema again).
     // Actually, in schema.ts, reviews table has shopId but not bookingId?!
     // Let me check schema.ts again.
-    return reviews.map(r => (r as any).bookingId).filter(Boolean) as string[];
+    // FIX #6: The reviews table has a bookingId field in schema.
+    return reviews.map(r => r.bookingId).filter((id): id is Id<"bookings"> => !!id);
   },
 });
 
@@ -164,7 +167,8 @@ export const addReview = mutation({
     if (!shop) throw new Error("Shop not found");
 
     const newTotalReviews = (shop.totalReviews || 0) + 1;
-    const newTotalSum = (shop.totalRatingSum || (shop.rating * shop.totalReviews)) + args.rating;
+    // FIX #4: Use ?? instead of || so an intentional 0 isn't bypassed
+    const newTotalSum = (shop.totalRatingSum ?? (shop.rating * shop.totalReviews)) + args.rating;
     const newRating = newTotalSum / newTotalReviews;
 
     await ctx.db.patch(args.shopId, {

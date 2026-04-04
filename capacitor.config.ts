@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.trimo.app',
-  appName: 'Trimo',
+  appId: 'com.cutzo.app',
+  appName: 'Cutzo',
   webDir: 'dist',
   plugins: {
     FirebaseAuthentication: {
@@ -18,7 +18,11 @@ const config: CapacitorConfig = {
       launchShowDuration: 1500, // keep native splash until React is ready
       backgroundColor: "#8F00FF", // matches CSS
     },
+    PushNotifications: {
+      presentationOptions: ["badge", "sound", "alert"],
+    },
   },
 };
 
 export default config;
+

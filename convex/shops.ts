@@ -12,8 +12,9 @@ export const getShops = query({
       .withIndex("by_status", (q) =>
         q.eq("status", "approved").eq("isActive", true)
       )
-      .filter((q) => q.neq(q.field("isOpen"), false))
-      .take(100);
+      // FIX #9: neq(false) excludes undefined — use explicit or() to include legacy shops without isOpen set
+      .filter((q) => q.or(q.eq(q.field("isOpen"), true), q.eq(q.field("isOpen"), undefined)))
+      .take(500);
     
     return await Promise.all(shops.map(async shop => ({
       ...shop,
@@ -35,18 +36,8 @@ export const getShopsByOwner = query({
       .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
       .collect();
       
-    // Bug 3 Fix: The withIndex("by_owner") already scopes results to this ownerId.
-    // Any authenticated user is now allowed to see their own shops.
-    // The implicit authorization is: only this owner's shops are returned by the index.
-    // We still check firebaseUid for strict ownership on the tokens that have it set correctly.
-    // But we never block if ownerId matches — since no one else can fake an ownerId index query.
     const authorizedShops = shops.filter(s => {
-      if (s.firebaseUid === identity.subject) return true;
-      // If no firebaseUid is set (newly registered, pending approval), allow access
-      if (!s.firebaseUid) return true;
-      // Allow if the shop has ever been patched with the right ownerId (covers manual login)
-      if (s.ownerId === args.ownerId) return true;
-      return false;
+      return s.firebaseUid === identity.subject || s.ownerId === identity.subject;
     });
     if (shops.length > 0 && authorizedShops.length === 0) throw new Error("Unauthorized");
     
@@ -85,8 +76,8 @@ export const getTrendingShops = query({
       .withIndex("by_status", (q) =>
         q.eq("status", "approved").eq("isActive", true)
       )
-      .filter((q) => q.neq(q.field("isOpen"), false))
-      .take(100);
+      .filter((q) => q.or(q.eq(q.field("isOpen"), true), q.eq(q.field("isOpen"), undefined)))
+      .take(500);
 
     const topShops = shops
       .sort((a, b) => b.rating - a.rating || b.totalReviews - a.totalReviews)
@@ -113,7 +104,7 @@ export const getNearbyShops = query({
       .withIndex("by_status", (q) =>
         q.eq("status", "approved").eq("isActive", true)
       )
-      .filter((q) => q.neq(q.field("isOpen"), false))
+      .filter((q) => q.or(q.eq(q.field("isOpen"), true), q.eq(q.field("isOpen"), undefined)))
       .take(500);
 
     const R = 6371; // Radius of the Earth in km
@@ -203,7 +194,7 @@ export const upsertShopInternal = internalMutation({
       ownerId: args.ownerId,
       shopName: args.shopName,
       address: args.address,
-      location: { lat: args.lat, lng: args.lng },
+      // FIX #7: location is applied conditionally below — skip here
       isActive: true,
       phone: args.phone,
       image: args.image,
@@ -221,6 +212,8 @@ export const upsertShopInternal = internalMutation({
       firebaseUid: args.firebaseUid,
       ...(args.username ? { username: args.username } : {}),
       ...(args.password ? { password: args.password } : {}),
+      // FIX #7: Only overwrite location if we have valid non-zero coordinates
+      ...(args.lat !== 0 || args.lng !== 0 ? { location: { lat: args.lat, lng: args.lng } } : {}),
     };
 
     const shopId = existing ? existing._id : await ctx.db.insert("shops", {
@@ -373,7 +366,7 @@ export const getShopBookedSlots = query({
     fromDate: v.optional(v.string()), // Accept a fromDate arg (YYYY-MM-DD)
   },
   handler: async (ctx, args) => {
-    let query = ctx.db.query("slotBookings")
+    const query = ctx.db.query("slotBookings")
       .withIndex("by_shop_date_time", (q) => 
         args.fromDate 
           ? q.eq("shopId", args.shopId).gte("date", args.fromDate)
@@ -415,12 +408,8 @@ export const toggleShopStatus = mutation({
       .first();
 
     if (!shop) throw new Error("Shop not found for ownerId: " + args.ownerId);
-    if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
-      if (shop.ownerId === args.ownerId) {
-         // Allow (Safe fallback for recovery/manual login sync timing)
-      } else {
-        throw new Error("Unauthorized");
-      }
+    if (identity.subject !== shop.firebaseUid && identity.subject !== shop.ownerId) {
+      throw new Error("Unauthorized");
     }
 
     const next = !(shop.isOpen ?? true); // default open if undefined
@@ -445,12 +434,8 @@ export const getShopIsOpen = query({
       .first();
 
     if (!shop) return true; // fallback: treat as open if shop not synced yet
-    if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
-      if (shop.ownerId === args.ownerId) {
-         // Allow
-      } else {
-        throw new Error("Unauthorized");
-      }
+    if (identity.subject !== shop.firebaseUid && identity.subject !== shop.ownerId) {
+      throw new Error("Unauthorized");
     }
     return shop.isOpen ?? true;
   },
@@ -476,7 +461,7 @@ export const getShopAvailability = query({
 });
 
 export const getAvailableSlots = query({
-  args: { shopId: v.id("shops"), date: v.string(), clientNow: v.optional(v.number()) },
+  args: { shopId: v.id("shops"), date: v.string(), clientNow: v.optional(v.number()), timezoneOffset: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const shop = await ctx.db.get(args.shopId);
     if (!shop || !shop.isActive) return [];
@@ -486,15 +471,25 @@ export const getAvailableSlots = query({
     const duration = shop.slotDuration || 30;
     const maxCapacity = shop.maxBookingsPerSlot || 1;
     const now = args.clientNow ?? Date.now();
+    const tzOffset = args.timezoneOffset ?? 0;
 
-    // 1. Get blocked dates
+    // 1. Get real-time barber status
+    const statusResult = await ctx.db
+      .query("barberStatus")
+      .withIndex("by_shop", (q) => q.eq("shopId", args.shopId))
+      .first();
+    const busyUntil = statusResult?.currentStatus === "busy" ? statusResult.busyUntil : 0;
+    const bufferTime = 5 * 60 * 1000;
+    const [year, month, day] = args.date.split("-").map(Number);
+
+    // 2. Get blocked dates
     const blockedDatesRaw = await ctx.db
       .query("blockedDates")
       .withIndex("by_shop", (q) => q.eq("shopId", args.shopId))
       .filter((q) => q.eq(q.field("date"), args.date))
       .collect();
     
-    let isBlockedDate = blockedDatesRaw.length > 0;
+    const isBlockedDate = blockedDatesRaw.length > 0;
     if (isBlockedDate) return [];
 
     // 2. Get existing bookings for this date to determine availability
@@ -507,16 +502,22 @@ export const getAvailableSlots = query({
     
     const bookingMap = new Map(slotBookings.map(sb => [sb.time, sb.bookedCount]));
 
-    // 3. Generate slots
+    // 4. Generate slots
     const slots = [];
     for (let m = openMins; m < closeMins; m += duration) {
       const time24 = minsToTime24(m);
       
+      const [h, min] = time24.split(":").map(Number);
+      
+      const slotStartTimestamp = Date.UTC(year, month - 1, day, h, min) + (tzOffset * 60000);
+      
       // Determine status
       let status: "available" | "booked" | "break" | "past" | "closed" = "available";
       
-      if (isPastTime(args.date, time24, now)) {
+      if (isPastTime(args.date, time24, now, tzOffset)) {
         status = "past";
+      } else if (slotStartTimestamp < busyUntil + bufferTime && slotStartTimestamp + (duration * 60 * 1000) > Date.now()) {
+        status = "booked"; // busy due to walk-in or current appointment + buffer
       } else if (shop.breakTime && isDuring(time24, shop.breakTime.start, shop.breakTime.end)) {
         status = "break";
       } else {
@@ -538,7 +539,7 @@ export const getAvailableSlots = query({
 });
 
 export const checkSlotAvailable = query({
-  args: { shopId: v.id("shops"), date: v.string(), time: v.string(), clientNow: v.optional(v.number()) },
+  args: { shopId: v.id("shops"), date: v.string(), time: v.string(), clientNow: v.optional(v.number()), timezoneOffset: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const shop = await ctx.db.get(args.shopId);
     if (!shop || !shop.isActive || shop.isOpen === false) {
@@ -546,18 +547,44 @@ export const checkSlotAvailable = query({
     }
 
     const now = args.clientNow ?? Date.now();
+    const tzOffset = args.timezoneOffset ?? 0;
     
-    // 1. Past check
-    if (isPastTime(args.date, args.time, now)) {
+    // Convert 12h to 24h if necessary. In Cutzo, args.time might be "09:00 AM" if we use old logic, 
+    // but looking at getAvailableSlots, we generate "HH:MM" (time24). Let's safely extract numbers
+    const [year, month, day] = args.date.split("-").map(Number);
+    const timeMatch = args.time.match(/(\d+):(\d+)(?:\s*(AM|PM))?/i);
+    let h = 0, min = 0;
+    if (timeMatch) {
+       h = parseInt(timeMatch[1], 10);
+       min = parseInt(timeMatch[2], 10);
+       if (timeMatch[3] && timeMatch[3].toUpperCase() === "PM" && h < 12) h += 12;
+       if (timeMatch[3] && timeMatch[3].toUpperCase() === "AM" && h === 12) h = 0;
+    }
+    const slotStartTimestamp = Date.UTC(year, month - 1, day, h, min) + (tzOffset * 60000);
+    
+    // 1. Real-time status check
+    const statusResult = await ctx.db
+      .query("barberStatus")
+      .withIndex("by_shop", (q) => q.eq("shopId", args.shopId))
+      .first();
+    const busyUntil = statusResult?.currentStatus === "busy" ? statusResult.busyUntil : 0;
+    const bufferTime = 5 * 60 * 1000;
+    
+    if (slotStartTimestamp < busyUntil + bufferTime && slotStartTimestamp + ((shop.slotDuration || 30) * 60 * 1000) > Date.now()) {
+      return { available: false, reason: "Barber is currently busy until " + new Date(busyUntil).toLocaleTimeString() };
+    }
+
+    // 2. Past check
+    if (isPastTime(args.date, args.time, now, tzOffset)) {
       return { available: false, reason: "This time has already passed." };
     }
 
-    // 2. Working hours check
+    // 3. Working hours check
     if (!isDuring(args.time, shop.openTime || "09:00", shop.closeTime || "21:00")) {
       return { available: false, reason: "Shop is closed at this time." };
     }
 
-    // 3. Blocked dates check
+    // 4. Blocked dates check
     const blockedDates = await ctx.db
       .query("blockedDates")
       .withIndex("by_shop", (q) => q.eq("shopId", args.shopId))
@@ -565,12 +592,12 @@ export const checkSlotAvailable = query({
       .collect();
     if (blockedDates.length > 0) return { available: false, reason: "Date is blocked." };
 
-    // 4. Break time check
+    // 5. Break time check
     if (shop.breakTime && isDuring(args.time, shop.breakTime.start, shop.breakTime.end)) {
       return { available: false, reason: "Shop is on break." };
     }
 
-    // 5. Capacity check
+    // 6. Capacity check
     const existingSlot = await ctx.db
       .query("slotBookings")
       .withIndex("by_shop_date_time", (q) =>
@@ -586,3 +613,4 @@ export const checkSlotAvailable = query({
     return { available: true };
   },
 });
+

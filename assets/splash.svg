@@ -1,0 +1,22 @@
+<svg width="2732" height="2732" viewBox="0 0 2732 2732" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Dark deep violet background, perfectly matching our HTML flash-prevention color -->
+    <rect id="bg" width="2732" height="2732" fill="#12002E" />
+
+    <!-- Mask to create the diagonal curved slash cutout -->
+    <mask id="cutMask">
+      <rect width="2732" height="2732" fill="white" />
+      <path d="M 1201 1545 Q 1366 1390 1557 1111 L 1532 1098 Q 1366 1358 1189 1520 Z" fill="black" />
+    </mask>
+  </defs>
+
+  <use href="#bg" />
+
+  <g transform="translate(1116, 1116) scale(0.488)">
+    <g mask="url(#cutMask)">
+      <path d="M 280 340 L 744 340" stroke="white" stroke-width="150" stroke-linecap="round" />
+      <path d="M 744 340 L 280 684" stroke="white" stroke-width="150" stroke-linejoin="miter" />
+      <path d="M 280 684 L 744 684" stroke="white" stroke-width="150" stroke-linecap="round" />
+    </g>
+  </g>
+</svg>

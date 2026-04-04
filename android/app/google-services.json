@@ -1,41 +1,41 @@
 {
   "project_info": {
-    "project_number": "648252665759",
-    "project_id": "trimo-e4f93",
-    "storage_bucket": "trimo-e4f93.firebasestorage.app"
+    "project_number": "453077300494",
+    "project_id": "cutzo-72b9e",
+    "storage_bucket": "cutzo-72b9e.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:648252665759:android:dd32048af13e9ac25497aa",
+        "mobilesdk_app_id": "1:453077300494:android:bca31db2dfea0514d7535f",
         "android_client_info": {
-          "package_name": "com.trimo.app"
+          "package_name": "com.cutzo.app"
         }
       },
       "oauth_client": [
         {
-          "client_id": "648252665759-4upr7vm38e4nsrkmje2jc2pis5aum9d3.apps.googleusercontent.com",
+          "client_id": "453077300494-fd641qjb6i0r9dfep5kclkm1vrrh8qe3.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.trimo.app",
+            "package_name": "com.cutzo.app",
             "certificate_hash": "abe1eb713f49519bd313c1a4270651bc5f56fb76"
           }
         },
         {
-          "client_id": "648252665759-riu740mijhv712n8vvrif1k7t7aao5i0.apps.googleusercontent.com",
+          "client_id": "453077300494-2phuskoidvbi1fai650lu5b1vmo401pt.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyAUkT3h3owQ0eUTdfNR13-GBIb9pCbKGBg"
+          "current_key": "AIzaSyD84lwl1ILIkQ6STResXsWOXNqmSAtC1A0"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "648252665759-riu740mijhv712n8vvrif1k7t7aao5i0.apps.googleusercontent.com",
+              "client_id": "453077300494-2phuskoidvbi1fai650lu5b1vmo401pt.apps.googleusercontent.com",
               "client_type": 3
             }
           ]

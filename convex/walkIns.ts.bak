@@ -1,0 +1,227 @@
+import { internalMutation, mutation, query } from "./_generated/server";
+import { v } from "convex/values";
+
+// Get the current status of the barber
+export const getBarberStatus = query({
+  args: { ownerId: v.string() },
+  handler: async (ctx, args) => {
+    const shop = await ctx.db
+      .query("shops")
+      .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
+      .first();
+    if (!shop) return { 
+      currentStatus: "idle", 
+      busyUntil: 0,
+      currentServiceType: undefined,
+      currentCustomerType: undefined,
+      activeItemId: undefined,
+    };
+
+    const status = await ctx.db
+      .query("barberStatus")
+      .withIndex("by_shop", (q) => q.eq("shopId", shop._id))
+      .first();
+
+    if (!status) {
+      return {
+        currentStatus: "idle",
+        busyUntil: 0,
+        currentServiceType: undefined,
+        currentCustomerType: undefined,
+        activeItemId: undefined,
+      };
+    }
+
+    // Refresh if busy period has passed
+    if (status.currentStatus === "busy" && status.busyUntil < Date.now()) {
+      return {
+        currentStatus: "idle",
+        busyUntil: 0,
+        currentServiceType: undefined,
+        currentCustomerType: undefined,
+        activeItemId: undefined,
+      };
+    }
+
+    return status;
+  },
+});
+
+// Get the current status of the barber by shopId
+export const getBarberStatusByShopId = query({
+  args: { shopId: v.id("shops") },
+  handler: async (ctx, args) => {
+    const status = await ctx.db
+      .query("barberStatus")
+      .withIndex("by_shop", (q) => q.eq("shopId", args.shopId))
+      .first();
+
+    if (!status) {
+      return {
+        currentStatus: "idle",
+        busyUntil: 0,
+        currentServiceType: undefined,
+        currentCustomerType: undefined,
+        activeItemId: undefined,
+      };
+    }
+
+    // Refresh if busy period has passed
+    if (status.currentStatus === "busy" && status.busyUntil < Date.now()) {
+      return {
+        currentStatus: "idle",
+        busyUntil: 0,
+        currentServiceType: undefined,
+        currentCustomerType: undefined,
+        activeItemId: undefined,
+      };
+    }
+
+    return status;
+  },
+});
+
+// Start a walk-in service
+export const startWalkIn = mutation({
+  args: {
+    ownerId: v.string(),
+    serviceName: v.string(),
+    estimatedDuration: v.number(), // in minutes
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
+    const shop = await ctx.db
+      .query("shops")
+      .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
+      .first();
+    if (!shop) throw new Error("Shop not found");
+
+    // FIX #3: Proper authorization — must be the shop owner
+    if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
+      if (shop.ownerId !== args.ownerId) {
+        throw new Error("Unauthorized: you can only start a walk-in for your own shop.");
+      }
+    }
+
+    const now = Date.now();
+    const busyUntil = now + (args.estimatedDuration * 60 * 1000);
+
+    const walkInId = await ctx.db.insert("walkIns", {
+      shopId: shop._id,
+      serviceName: args.serviceName,
+      startTime: now,
+      estimatedDuration: args.estimatedDuration,
+      calculatedFinishTime: busyUntil,
+      status: "active",
+    });
+
+    const existingStatus = await ctx.db
+      .query("barberStatus")
+      .withIndex("by_shop", (q) => q.eq("shopId", shop._id))
+      .first();
+
+    if (existingStatus) {
+      await ctx.db.patch(existingStatus._id, {
+        currentStatus: "busy",
+        busyUntil: busyUntil,
+        currentServiceType: args.serviceName,
+        currentCustomerType: "walk-in",
+        activeItemId: walkInId,
+      });
+    } else {
+      await ctx.db.insert("barberStatus", {
+        shopId: shop._id,
+        currentStatus: "busy",
+        busyUntil: busyUntil,
+        currentServiceType: args.serviceName,
+        currentCustomerType: "walk-in",
+        activeItemId: walkInId,
+      });
+    }
+
+    return walkInId;
+  },
+});
+
+// Mark the current walk-in or service as complete
+export const finishWalkIn = mutation({
+  args: { ownerId: v.string() },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
+    const shop = await ctx.db
+      .query("shops")
+      .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
+      .first();
+    if (!shop) throw new Error("Shop not found");
+
+    // Authorization check (same pattern as other mutations)
+    if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
+      if (shop.ownerId !== args.ownerId) {
+        throw new Error("Unauthorized: you can only finish services for your own shop.");
+      }
+    }
+
+    const existingStatus = await ctx.db
+      .query("barberStatus")
+      .withIndex("by_shop", (q) => q.eq("shopId", shop._id))
+      .first();
+
+    if (existingStatus && existingStatus.currentStatus === "busy") {
+      // FIX #1: Only patch the walkIns table if the active item is a walk-in.
+      // Never patch a bookings document ID into the walkIns table.
+      if (existingStatus.activeItemId && existingStatus.currentCustomerType === "walk-in") {
+        // Safely patch the walkIns record using a typed query
+        const walkIn = await ctx.db.query("walkIns")
+          .withIndex("by_shop", (q) => q.eq("shopId", shop._id))
+          .filter((q) => q.eq(q.field("status"), "active"))
+          .first();
+        if (walkIn) {
+          await ctx.db.patch(walkIn._id, { status: "completed" });
+        }
+      }
+      // For online bookings, the booking is completed via the completeBooking mutation.
+      // finishWalkIn only clears the barber status here.
+
+      await ctx.db.patch(existingStatus._id, {
+        currentStatus: "idle",
+        busyUntil: Date.now(),
+        currentServiceType: undefined,
+        currentCustomerType: undefined,
+        activeItemId: undefined,
+      });
+    }
+    
+    return true;
+  },
+});
+
+// FIX #2: Auto-expire stale barberStatus records (called by cron)
+export const expireStaleBarberStatuses = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const staleStatuses = await ctx.db
+      .query("barberStatus")
+      .filter((q) => q.and(
+        q.eq(q.field("currentStatus"), "busy"),
+        q.lt(q.field("busyUntil"), now)
+      ))
+      .collect();
+
+    for (const status of staleStatuses) {
+      await ctx.db.patch(status._id, {
+        currentStatus: "idle",
+        busyUntil: now,
+        currentServiceType: undefined,
+        currentCustomerType: undefined,
+        activeItemId: undefined,
+      });
+    }
+
+    return staleStatuses.length;
+  },
+});

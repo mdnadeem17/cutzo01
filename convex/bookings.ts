@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { isPastTime, isDuring } from "./utils";
 import { checkRateLimit } from "./rateLimit";
 import { paginationOptsValidator } from "convex/server";
+import { internal } from "./_generated/api";
 
 // Create a new booking
 export const createBooking = mutation({
@@ -145,6 +146,14 @@ export const createBooking = mutation({
         createdAt: Date.now(),
       });
       
+      if (shop.fcmToken) {
+        await ctx.scheduler.runAfter(0, internal.pushNotifications.sendPushNotification, {
+          fcmToken: shop.fcmToken,
+          title: "New Booking Request",
+          body: `${args.customerName} wants to book ${args.services.map(s => s.name).join(", ")} on ${args.date} at ${args.time}.`,
+        });
+      }
+      
       // ── 5. Send notification to customer  ────────────────────────────────
       await ctx.db.insert("notifications", {
         userId: args.customerId,
@@ -154,6 +163,19 @@ export const createBooking = mutation({
         isRead: false,
         createdAt: Date.now(),
       });
+
+      const customer = await ctx.db
+        .query("users")
+        .withIndex("by_uid", (q) => q.eq("uid", args.customerId))
+        .first();
+
+      if (customer?.fcmToken) {
+        await ctx.scheduler.runAfter(0, internal.pushNotifications.sendPushNotification, {
+          fcmToken: customer.fcmToken,
+          title: "Booking Requested",
+          body: `Your booking at ${shop.shopName} was sent. Your service OTP is ${otp}.`,
+        });
+      }
     } catch (e) {
       // non-critical
     }
@@ -319,7 +341,7 @@ export const getShopBookings = query({
   },
 });
 
-// ── TRIMO STRICT BOOKING FLOW MUTATIONS ──
+// ── CUTZO STRICT BOOKING FLOW MUTATIONS ──
 
 export const acceptBooking = mutation({
   args: {
@@ -362,6 +384,19 @@ export const acceptBooking = mutation({
         isRead: false,
         createdAt: Date.now(),
       });
+
+      const customer = await ctx.db
+        .query("users")
+        .withIndex("by_uid", (q) => q.eq("uid", booking.customerId))
+        .first();
+
+      if (customer?.fcmToken) {
+        await ctx.scheduler.runAfter(0, internal.pushNotifications.sendPushNotification, {
+          fcmToken: customer.fcmToken,
+          title: "Booking Confirmed!",
+          body: `Your appointment at ${shop.shopName} on ${booking.date} has been confirmed. OTP: ${booking.otp}`,
+        });
+      }
     }
   },
 });
@@ -410,6 +445,34 @@ export const verifyBookingOtp = mutation({
       otpVerified: true,
     });
 
+    const totalDuration = booking.services.reduce((acc, s) => acc + s.duration, 0) || 30;
+    const busyUntil = Date.now() + (totalDuration * 60 * 1000);
+    const serviceName = booking.services.map(s => s.name).join(", ");
+    
+    const existingStatus = await ctx.db
+      .query("barberStatus")
+      .withIndex("by_shop", (q) => q.eq("shopId", booking.shopId))
+      .first();
+
+    if (existingStatus) {
+      await ctx.db.patch(existingStatus._id, {
+        currentStatus: "busy",
+        busyUntil: busyUntil,
+        currentServiceType: serviceName,
+        currentCustomerType: "online",
+        activeItemId: args.bookingId as string,
+      });
+    } else {
+      await ctx.db.insert("barberStatus", {
+        shopId: booking.shopId,
+        currentStatus: "busy",
+        busyUntil: busyUntil,
+        currentServiceType: serviceName,
+        currentCustomerType: "online",
+        activeItemId: args.bookingId as string,
+      });
+    }
+
     if (booking.customerId) {
       await ctx.db.insert("notifications", {
         userId: booking.customerId,
@@ -455,6 +518,21 @@ export const completeBooking = mutation({
       completedAt: Date.now().toString(),
     });
 
+    const existingStatus = await ctx.db
+      .query("barberStatus")
+      .withIndex("by_shop", (q) => q.eq("shopId", booking.shopId))
+      .first();
+      
+    if (existingStatus && existingStatus.activeItemId === args.bookingId) {
+      await ctx.db.patch(existingStatus._id, {
+        currentStatus: "idle",
+        busyUntil: Date.now(),
+        currentServiceType: undefined,
+        currentCustomerType: undefined,
+        activeItemId: undefined,
+      });
+    }
+
     if (booking.customerId) {
       await ctx.db.insert("notifications", {
         userId: booking.customerId,
@@ -464,6 +542,19 @@ export const completeBooking = mutation({
         isRead: false,
         createdAt: Date.now(),
       });
+
+      const customer = await ctx.db
+        .query("users")
+        .withIndex("by_uid", (q) => q.eq("uid", booking.customerId))
+        .first();
+
+      if (customer?.fcmToken) {
+        await ctx.scheduler.runAfter(0, internal.pushNotifications.sendPushNotification, {
+          fcmToken: customer.fcmToken,
+          title: "Service Completed",
+          body: `Your appointment at ${shop.shopName} has finished. Hope you liked the service!`,
+        });
+      }
     }
   },
 });
@@ -545,6 +636,29 @@ export const cancelBooking = mutation({
         isRead: false,
         createdAt: Date.now(),
       });
+
+      const customer = await ctx.db
+        .query("users")
+        .withIndex("by_uid", (q) => q.eq("uid", booking.customerId))
+        .first();
+
+      if (customer?.fcmToken) {
+        await ctx.scheduler.runAfter(0, internal.pushNotifications.sendPushNotification, {
+          fcmToken: customer.fcmToken,
+          title: "Booking Cancelled",
+          body: `Sorry, your appointment at ${shop?.shopName} on ${booking.date} was cancelled.`,
+        });
+      }
+    } else if (args.callerCustomerId) {
+      // Notify owner if customer cancels
+      const shop = await ctx.db.get(booking.shopId);
+      if (shop?.fcmToken) {
+        await ctx.scheduler.runAfter(0, internal.pushNotifications.sendPushNotification, {
+          fcmToken: shop.fcmToken,
+          title: "Booking Cancelled",
+          body: `${booking.customerName} cancelled their appointment on ${booking.date} at ${booking.time}.`,
+        });
+      }
     }
   },
 });
@@ -687,6 +801,29 @@ export const rescheduleBooking = mutation({
         isRead: false,
         createdAt: Date.now(),
       });
+
+      // 3. Push for Owner
+      if (shop.fcmToken) {
+        await ctx.scheduler.runAfter(0, internal.pushNotifications.sendPushNotification, {
+          fcmToken: shop.fcmToken,
+          title: "Booking Rescheduled",
+          body: `${booking.customerName} moved their appointment to ${args.newDate} at ${args.newTime}.`,
+        });
+      }
+
+      // 4. Push for Customer
+      const customer = await ctx.db
+        .query("users")
+        .withIndex("by_uid", (q) => q.eq("uid", booking.customerId))
+        .first();
+
+      if (customer?.fcmToken) {
+        await ctx.scheduler.runAfter(0, internal.pushNotifications.sendPushNotification, {
+          fcmToken: customer.fcmToken,
+          title: "Reschedule Confirmed",
+          body: `Your appointment at ${shop.shopName} has been moved to ${args.newDate} at ${args.newTime}.`,
+        });
+      }
     } catch (e) {
       // non-critical
     }
@@ -697,3 +834,4 @@ export const rescheduleBooking = mutation({
 
 // Alias for specific frontend request
 export const createBookingWithOtp = createBooking;
+

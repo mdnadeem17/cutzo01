@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Camera, ChevronRight, Image as ImageIcon, Loader2, LogOut, MapPin, Phone, Store, Trash2, User, X } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import TrimoHeader from "./TrimoHeader";
+import CutzoHeader from "./CutzoHeader";
 import { VendorProfile } from "./types";
 import { formatError } from "../../lib/errorUtils";
 
@@ -164,7 +164,7 @@ export default function ProfileScreen({ ownerId, profile, onSaveProfile, onLogou
       className="flex min-h-[100dvh] flex-col bg-slate-50 pb-24"
     >
       {/* Premium Header */}
-      <TrimoHeader
+      <CutzoHeader
         title="Business Profile"
         subtitle={profile.shopName}
         rightButtonText="Edit Info"
