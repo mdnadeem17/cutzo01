@@ -242,9 +242,9 @@ export default function DashboardScreen({
           {/* Subtle Background Glow */}
           <div className={`absolute top-0 right-0 w-32 h-32 blur-[60px] opacity-20 pointer-events-none -mr-16 -mt-16 ${barberStatus?.currentStatus === "busy" ? "bg-red-500" : "bg-emerald-500"}`} />
           
-          <div className="p-6 relative z-10">
+          <div className="p-5 relative z-10">
             {/* Header Area */}
-            <div className="flex items-start justify-between mb-6">
+            <div className="flex items-start justify-between mb-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <div className={`h-2 w-2 rounded-full ${barberStatus?.currentStatus === "busy" ? "bg-red-500 animate-pulse" : "bg-emerald-500"}`} />
@@ -348,9 +348,9 @@ export default function DashboardScreen({
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
-                  className="flex flex-col items-center justify-center py-8 text-center"
+                  className="flex flex-col items-center justify-center py-4 text-center"
                 >
-                  <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-emerald-50 mb-4 animate-pulse">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-emerald-50 mb-3 animate-pulse">
                     <Check className="h-8 w-8 text-emerald-500" />
                   </div>
                   <h4 className="text-xl font-black text-slate-900 mb-1">Available to Serve</h4>
@@ -359,7 +359,7 @@ export default function DashboardScreen({
               )}
             </AnimatePresence>
 
-            <div className="mt-8">
+            <div className="mt-4">
               <motion.button
                 whileTap={{ scale: 0.97 }}
                 onClick={() => setShowWalkInModal(true)}

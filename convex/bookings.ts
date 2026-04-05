@@ -576,10 +576,10 @@ export const cancelBooking = mutation({
 
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) throw new Error("Booking not found.");
+    const shop = await ctx.db.get(booking.shopId);
+    if (!shop) throw new Error("Shop not found.");
 
     if (args.callerOwnerId) {
-      const shop = await ctx.db.get(booking.shopId);
-      if (!shop) throw new Error("Shop not found.");
       if (shop.firebaseUid && shop.firebaseUid !== identity.subject) {
         if (shop.ownerId === args.callerOwnerId) {
           // Allow
@@ -651,7 +651,6 @@ export const cancelBooking = mutation({
       }
     } else if (args.callerCustomerId) {
       // Notify owner if customer cancels
-      const shop = await ctx.db.get(booking.shopId);
       if (shop?.fcmToken) {
         await ctx.scheduler.runAfter(0, internal.pushNotifications.sendPushNotification, {
           fcmToken: shop.fcmToken,
