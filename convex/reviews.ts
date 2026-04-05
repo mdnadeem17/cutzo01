@@ -105,8 +105,8 @@ export const getReviewedBookingIds = query({
   args: { customerId: v.string() },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthenticated");
-    if (identity.subject !== args.customerId) throw new Error("Unauthorized");
+    if (!identity) return [];
+    if (identity.subject !== args.customerId) return [];
 
     const reviews = await ctx.db
       .query("reviews")

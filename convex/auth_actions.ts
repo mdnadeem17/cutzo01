@@ -108,22 +108,26 @@ export const loginShopOwner = action({
         }
       }
     } else {
-      // 2. Legacy plaintext comparison
-      isMatch = storedPassword === args.password;
-      
-      // 3. Legacy SHA-256 hex comparison (from previous client-side hashing behavior)
-      if (!isMatch && storedPassword.length === 64) {
+      // SEC-03 FIX: Reject all non-bcrypt passwords with a clear message.
+      // Plaintext comparison was a critical vulnerability — removed entirely.
+      // Legacy SHA-256 passwords can still be compared and will be auto-upgraded.
+      if (storedPassword.length === 64) {
         const sha256Hash = crypto.createHash("sha256").update(args.password).digest("hex");
         isMatch = storedPassword === sha256Hash;
-      }
-      
-      if (isMatch) {
-        // Automatically upgrade to bcrypt hash once they succeed
-        const newHash = await bcrypt.hash(args.password, 10);
-        await ctx.runMutation(internal.shops.patchShopPassword, {
-          shopId: shop._id,
-          password: newHash,
-        });
+        if (isMatch) {
+          // Automatically upgrade to bcrypt hash
+          const newHash = await bcrypt.hash(args.password, 10);
+          await ctx.runMutation(internal.shops.patchShopPassword, {
+            shopId: shop._id,
+            password: newHash,
+          });
+        }
+      } else {
+        // Unknown format — refuse comparison rather than risking plaintext leak
+        return {
+          success: false,
+          error: "Your account uses an outdated password format. Please contact support to reset your password.",
+        };
       }
     }
 

@@ -56,6 +56,7 @@ interface SetupDraft {
   password?: string;
   blockedDates?: { date: string; reason?: string }[];
   imageStorageId?: string; // ID from Convex Storage
+  termsAccepted?: boolean;
 }
 
 const hourOptions = [
@@ -100,6 +101,7 @@ const createDraft = (overrides?: Partial<SetupDraft>): SetupDraft => ({
   endHour: "21:00",
   image: "",
   authProvider: "phone",
+  termsAccepted: false,
   ...overrides,
 });
 
@@ -197,6 +199,13 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
 
     if (Capacitor.isNativePlatform()) {
       try {
+        // Attempt to clear any stuck state before signing in
+        try {
+          await FirebaseAuthentication.signOut();
+        } catch (e) {
+          // ignore signout errors
+        }
+
         const result = await FirebaseAuthentication.signInWithGoogle();
         
         // BUG 4 & 7 FIX: Sync Native Auth Token to Web JS SDK
@@ -229,7 +238,12 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
         }
       } catch (error: any) {
         console.error("Firebase Native Google Login failed:", error);
-        setErrorMessage(formatError(error));
+        const errMsg = formatError(error);
+        if (errMsg.includes("No credentials available")) {
+          setErrorMessage("Google Sign-In is temporarily blocked due to multiple cancelled attempts, or no Google account is found on this device. Please wait a moment or add an account in your device settings.");
+        } else {
+          setErrorMessage(errMsg);
+        }
         setIsLoggingIn(false);
       }
       return;
@@ -405,6 +419,11 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
         return;
       }
 
+      if (!setupDraft.termsAccepted) {
+        setErrorMessage("You must agree to the Terms of Service & Privacy Policy to continue.");
+        return;
+      }
+
 
       const workingHours = { start: setupDraft.startHour, end: setupDraft.endHour };
       const serviceCatalog = createDefaultServiceCatalog(
@@ -493,82 +512,110 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
 
   return (
     <div className="flex min-h-screen flex-col bg-muted">
-      <div className="customer-header px-4 pb-10 pt-4 safe-top">
-        <button
-          onClick={handleStepBack}
-          className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/15"
-        >
-          <ArrowLeft className="h-5 w-5 text-white" />
-        </button>
-        <p className="text-sm font-medium text-light-text">CUTZO Partner</p>
-        <h1 className="mt-1 text-2xl font-bold text-white">
-          {step === "setup" ? "Set up your shop" : "Owner login"}
-        </h1>
-        <p className="mt-1 text-sm text-light-text">
-          {step === "setup"
-            ? "Complete a quick setup so customers can discover and book your barber shop."
-            : "Use your Google account to access the barber shop dashboard."}
-        </p>
+      <div className="customer-header px-4 pb-8 pt-2 safe-top relative overflow-hidden">
+        {/* Decorative background shapes */}
+        <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10 blur-3xl animate-float-glow" />
+        <div className="absolute -left-10 bottom-0 h-32 w-32 rounded-full bg-white/10 blur-2xl flex" />
+        
+        <div className="relative z-10 flex items-center justify-between animate-fade-slide-up">
+          <button
+            onClick={handleStepBack}
+            className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/15 scale-tap backdrop-blur-md border border-white/10"
+          >
+            <ArrowLeft className="h-5 w-5 text-white" />
+          </button>
+          
+          <div className="flex items-center gap-1.5 mb-3 bg-white/10 px-3 py-1.5 rounded-full backdrop-blur-md border border-white/5">
+            <Store className="h-3.5 w-3.5 text-white" />
+            <p className="text-[11px] font-bold tracking-wider text-white uppercase">CUTZO Partner</p>
+          </div>
+        </div>
+
+        <div className="relative z-10 animate-fade-in-delayed">
+          <h1 className="text-3xl font-extrabold text-white tracking-tight">
+            {step === "setup" ? "Set up your shop" : "Owner login"}
+          </h1>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-white/80 max-w-[280px]">
+            {step === "setup"
+              ? "Complete a quick setup so customers can discover and book your barber shop."
+              : "Use your Google account to access the barber shop dashboard."}
+          </p>
+        </div>
       </div>
 
-      <div className="-mt-5 flex flex-1 flex-col gap-4 px-4 pb-8">
+      <div className="-mt-5 flex flex-1 flex-col gap-4 px-4 pb-8 z-20 relative">
         {step === "access" && (
-          <div className="max-h-[70dvh] overflow-y-auto rounded-[22px] bg-card p-5 card-shadow">
-            <h2 className="text-sm font-bold text-foreground mb-4 uppercase tracking-wider">Existing Users</h2>
+          <div className="max-h-[75dvh] overflow-y-auto rounded-[24px] bg-card p-6 card-shadow border border-border/50 animate-fade-slide-up scrollbar-hide">
+            <h2 className="text-xs font-bold text-foreground/80 mb-5 uppercase tracking-widest flex items-center gap-2">
+              <span className="h-px flex-1 bg-gradient-to-r from-transparent to-border"></span>
+              Existing Users
+              <span className="h-px flex-1 bg-gradient-to-l from-transparent to-border"></span>
+            </h2>
             
-            <div className="flex flex-col gap-3 mb-5">
-              <input
-                value={loginUsername}
-                onChange={(e) => setLoginUsername(e.target.value)}
-                placeholder="Username"
-                autoCapitalize="none"
-                className="h-14 rounded-[16px] border border-border bg-background px-4 text-sm font-medium outline-none"
-              />
-              <input
-                type="password"
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-                placeholder="Password"
-                className="h-14 rounded-[16px] border border-border bg-background px-4 text-sm font-medium outline-none"
-              />
+            <div className="flex flex-col gap-3.5 mb-6 group">
+              <div className="relative">
+                <input
+                  value={loginUsername}
+                  onChange={(e) => setLoginUsername(e.target.value)}
+                  placeholder="Username"
+                  autoCapitalize="none"
+                  className="h-14 w-full rounded-[16px] border border-border/70 bg-background/50 px-4 text-sm font-medium outline-none transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/10"
+                />
+              </div>
+              <div className="relative">
+                <input
+                  type="password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="Password"
+                  className="h-14 w-full rounded-[16px] border border-border/70 bg-background/50 px-4 text-sm font-medium outline-none transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/10"
+                />
+              </div>
               <button
                 onClick={handleCredentialsLogin}
                 disabled={isLoggingIn}
-                className="customer-gradient h-[52px] w-full rounded-[14px] text-base font-semibold text-white shadow-lg disabled:opacity-70"
+                className="customer-gradient scale-tap mt-2 h-[54px] w-full rounded-[16px] text-[15px] font-bold text-white shadow-[0_8px_20px_rgba(143,0,255,0.25)] transition-all disabled:opacity-70 disabled:scale-100"
               >
-                {isLoggingIn ? "Logging in..." : "Login"}
+                {isLoggingIn ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    <span>Logging in...</span>
+                  </div>
+                ) : "Login"}
               </button>
             </div>
 
-            <div className="flex items-center gap-3 mb-5">
-              <div className="h-px flex-1 bg-border" />
-              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent to-border" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
                 Or New Setup
               </span>
-              <div className="h-px flex-1 bg-border" />
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div
-                className="flex h-12 w-12 items-center justify-center rounded-2xl"
-                style={{ background: "hsl(var(--primary) / 0.08)" }}
-              >
-                <GoogleIcon className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-foreground">Sign up with Google</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Quick setup for new partners.
-                </p>
-              </div>
+              <div className="h-px flex-1 bg-gradient-to-l from-transparent to-border" />
             </div>
 
             <button
               onClick={continueWithGoogle}
               disabled={isLoggingIn}
-              className="mt-6 flex h-[52px] w-full items-center justify-center gap-2 rounded-[14px] border border-border bg-background text-base font-semibold text-foreground shadow-sm disabled:opacity-70"
+              className="group relative flex h-[68px] w-full scale-tap items-center overflow-hidden rounded-[20px] border border-border/80 bg-background/50 p-3 shadow-sm transition-all focus:outline-none disabled:opacity-70 disabled:scale-100"
             >
-              {!isLoggingIn && <GoogleIcon className="h-5 w-5" />}
+              <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+              
+              <div className="relative z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm border border-slate-100">
+                <GoogleIcon className="h-5 w-5" />
+              </div>
+              
+              <div className="relative z-10 ml-4 flex flex-col items-start justify-center">
+                <span className="text-[15px] font-bold text-foreground">Sign up with Google</span>
+                <span className="text-[12px] font-medium text-muted-foreground">Quick setup for new partners.</span>
+              </div>
+            </button>
+
+            <button
+              onClick={continueWithGoogle}
+              disabled={isLoggingIn}
+              className="mt-4 group relative flex h-[54px] w-full scale-tap items-center justify-center gap-3 overflow-hidden rounded-[16px] border border-border/80 bg-background hover:bg-slate-50 transition-all font-semibold text-foreground disabled:opacity-70 disabled:scale-100"
+            >
+              {!isLoggingIn && <GoogleIcon className="h-[18px] w-[18px]" />}
               {isLoggingIn ? "Signing in..." : "Continue with Google"}
             </button>
 
@@ -583,10 +630,10 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
         )}
 
         {step === "setup" && (
-          <div className="max-h-[70dvh] overflow-y-auto rounded-[22px] bg-card p-5 card-shadow">
-            <div className="space-y-4">
-              <label className="flex flex-col gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <div className="max-h-[75dvh] overflow-y-auto rounded-[24px] bg-card p-6 card-shadow border border-border/50 animate-fade-slide-up scrollbar-hide">
+            <div className="space-y-5">
+              <label className="flex flex-col gap-2 group">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/70 group-focus-within:text-primary transition-colors">
                   Shop Name
                 </span>
                 <input
@@ -594,13 +641,13 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
                   onChange={(event) =>
                     setSetupDraft((current) => ({ ...current, shopName: event.target.value }))
                   }
-                  className="h-14 rounded-[16px] border border-border bg-background px-4 text-sm font-medium outline-none"
+                  className="h-14 rounded-[16px] border border-border/70 bg-background/50 px-4 text-sm font-medium outline-none transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/10"
                   placeholder="Your shop's display name"
                 />
               </label>
 
-              <label className="flex flex-col gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <label className="flex flex-col gap-2 group">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/70 group-focus-within:text-primary transition-colors">
                   Owner Name
                 </span>
                 <input
@@ -608,17 +655,18 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
                   onChange={(event) =>
                     setSetupDraft((current) => ({ ...current, ownerName: event.target.value }))
                   }
-                  className="h-14 rounded-[16px] border border-border bg-background px-4 text-sm font-medium outline-none"
+                  className="h-14 rounded-[16px] border border-border/70 bg-background/50 px-4 text-sm font-medium outline-none transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/10"
                   placeholder="Your full name"
                 />
               </label>
 
-              <label className="flex flex-col gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <label className="flex flex-col gap-2 group">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/70 group-focus-within:text-primary transition-colors">
                   Phone Number (Required)
                 </span>
-                <div className="flex h-14 items-center rounded-[16px] border border-border bg-background px-4">
-                  <span className="text-sm font-semibold text-foreground">+91</span>
+                <div className="flex h-14 items-center rounded-[16px] border border-border/70 bg-background/50 px-4 transition-all focus-within:border-primary/50 focus-within:bg-background focus-within:ring-2 focus-within:ring-primary/10">
+                  <span className="text-sm font-bold text-foreground/80">+91</span>
+                  <div className="ml-3 h-6 w-px bg-border/80"></div>
                   <input
                     value={setupDraft.phone}
                     onChange={(event) =>
@@ -629,12 +677,13 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
                     }
                     className="ml-3 flex-1 bg-transparent text-sm font-medium outline-none"
                     placeholder="Enter the number"
+                    type="tel"
                   />
                 </div>
               </label>
 
-              <label className="flex flex-col gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <label className="flex flex-col gap-2 group">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/70 group-focus-within:text-primary transition-colors">
                   Shop Location
                 </span>
                 <input
@@ -642,13 +691,13 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
                   onChange={(event) =>
                     setSetupDraft((current) => ({ ...current, location: event.target.value }))
                   }
-                  className="h-14 rounded-[16px] border border-border bg-background px-4 text-sm font-medium outline-none"
+                  className="h-14 rounded-[16px] border border-border/70 bg-background/50 px-4 text-sm font-medium outline-none transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/10"
                   placeholder="City or area"
                 />
               </label>
 
-              <label className="flex flex-col gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <label className="flex flex-col gap-2 group">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/70 group-focus-within:text-primary transition-colors">
                   Address
                 </span>
                 <textarea
@@ -656,24 +705,24 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
                   onChange={(event) =>
                     setSetupDraft((current) => ({ ...current, address: event.target.value }))
                   }
-                  className="min-h-[110px] rounded-[16px] border border-border bg-background px-4 py-3 text-sm font-medium outline-none"
-                  placeholder="Shop address"
+                  className="min-h-[110px] rounded-[16px] border border-border/70 bg-background/50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/10 resize-none"
+                  placeholder="Full shop address"
                 />
               </label>
 
 
 
-              <div className="grid grid-cols-2 gap-3">
-                <label className="flex flex-col gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Open
+              <div className="grid grid-cols-2 gap-4">
+                <label className="flex flex-col gap-2 group">
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/70 group-focus-within:text-primary transition-colors">
+                    Opening Time
                   </span>
                   <select
                     value={setupDraft.startHour}
                     onChange={(event) =>
                       setSetupDraft((current) => ({ ...current, startHour: event.target.value }))
                     }
-                    className="h-14 rounded-[16px] border border-border bg-background px-4 text-sm font-semibold outline-none"
+                    className="h-14 rounded-[16px] border border-border/70 bg-background/50 px-4 text-sm font-semibold outline-none transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/10"
                   >
                     {hourOptions.map((option) => (
                       <option key={option} value={option}>
@@ -683,16 +732,16 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
                   </select>
                 </label>
 
-                <label className="flex flex-col gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Close
+                <label className="flex flex-col gap-2 group">
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/70 group-focus-within:text-primary transition-colors">
+                    Closing Time
                   </span>
                   <select
                     value={setupDraft.endHour}
                     onChange={(event) =>
                       setSetupDraft((current) => ({ ...current, endHour: event.target.value }))
                     }
-                    className="h-14 rounded-[16px] border border-border bg-background px-4 text-sm font-semibold outline-none"
+                    className="h-14 rounded-[16px] border border-border/70 bg-background/50 px-4 text-sm font-semibold outline-none transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/10"
                   >
                     {hourOptions.map((option) => (
                       <option key={option} value={option}>
@@ -704,13 +753,15 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
               </div>
 
               <div>
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/70 mb-2 block">
                   Shop Image
                 </span>
-                <label className="mt-3 flex cursor-pointer flex-col items-center justify-center rounded-[16px] border border-dashed border-border bg-background px-4 py-5 text-center">
-                  <ImageIcon className="h-5 w-5 text-primary" />
-                  <p className="mt-3 text-sm font-semibold text-foreground">Upload Shop Image</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Optional</p>
+                <label className="mt-1 flex cursor-pointer scale-tap flex-col items-center justify-center rounded-[20px] border-2 border-dashed border-border/80 bg-background/40 hover:bg-background/80 transition-all px-4 py-6 text-center group">
+                  <div className="rounded-full bg-primary/10 p-3 mb-3 group-hover:scale-110 transition-transform">
+                    <ImageIcon className="h-6 w-6 text-primary" />
+                  </div>
+                  <p className="text-sm font-bold text-foreground">Upload Shop Photo</p>
+                  <p className="mt-1.5 text-xs font-medium text-muted-foreground/80">JPG, PNG up to 5MB (Optional)</p>
                   <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
                 </label>
 
@@ -735,25 +786,29 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-border mt-4">
-                <h3 className="text-sm font-bold text-foreground mb-4 tracking-tight">Create Login Credentials</h3>
-                <label className="flex flex-col gap-2 mb-3">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <div className="pt-6 border-t border-border/60 mt-6">
+                <div className="flex items-center gap-2 mb-5 divide-x divide-transparent">
+                  <div className="h-8 w-1 rounded-full bg-primary" />
+                  <h3 className="text-[15px] font-bold text-foreground tracking-tight">Create Login Credentials</h3>
+                </div>
+                
+                <label className="flex flex-col gap-2 mb-4 group">
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/70 group-focus-within:text-primary transition-colors">
                     Username
                   </span>
                   <input
-                    value={setupDraft.username || ""}
+                     value={setupDraft.username || ""}
                     onChange={(event) =>
                       setSetupDraft((current) => ({ ...current, username: event.target.value.toLowerCase().trim() }))
                     }
                     autoCapitalize="none"
-                    className="h-14 rounded-[16px] border border-border bg-background px-4 text-sm font-medium outline-none"
+                    className="h-14 rounded-[16px] border border-border/70 bg-background/50 px-4 text-sm font-medium outline-none transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/10"
                     placeholder="Choose a unique username"
                   />
                 </label>
 
-                <label className="flex flex-col gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <label className="flex flex-col gap-2 group">
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/70 group-focus-within:text-primary transition-colors">
                     Password
                   </span>
                   <input
@@ -762,26 +817,49 @@ export default function ShopOwnerAuth({ onBack, onAuthenticated }: Props) {
                     onChange={(event) =>
                       setSetupDraft((current) => ({ ...current, password: event.target.value }))
                     }
-                    className="h-14 rounded-[16px] border border-border bg-background px-4 text-sm font-medium outline-none"
+                    className="h-14 rounded-[16px] border border-border/70 bg-background/50 px-4 text-sm font-medium outline-none transition-all focus:border-primary/50 focus:bg-background focus:ring-2 focus:ring-primary/10"
                     placeholder="Enter a secure password"
                   />
                 </label>
               </div>
 
+              <label className="flex items-start gap-3 mt-4 mb-2">
+                <input
+                  type="checkbox"
+                  checked={setupDraft.termsAccepted}
+                  onChange={(e) =>
+                    setSetupDraft((current) => ({
+                      ...current,
+                      termsAccepted: e.target.checked,
+                    }))
+                  }
+                  className="mt-1 h-5 w-5 rounded border-border accent-primary outline-none"
+                />
+                <span className="text-xs font-medium text-muted-foreground leading-snug">
+                  I agree to the <a href="#" className="font-bold text-foreground hover:underline">Terms of Service</a> & <a href="#" className="font-bold text-foreground hover:underline">Privacy Policy</a>
+                </span>
+              </label>
+
               <button
                 onClick={completeSetup}
                 disabled={isSubmitting}
-                className="customer-gradient h-[52px] w-full rounded-[14px] text-base font-semibold text-white mt-4 disabled:opacity-60"
+                className="customer-gradient scale-tap h-[56px] w-full items-center justify-center rounded-[16px] text-[16px] font-bold text-white shadow-[0_8px_20px_rgba(143,0,255,0.25)] mt-4 disabled:opacity-60 transition-all disabled:scale-100 flex gap-2"
               >
-                {isSubmitting ? "Submitting..." : "Complete Setup"}
+                {isSubmitting && <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/40 border-t-white" />}
+                {isSubmitting ? "Setting up..." : "Complete Setup"}
               </button>
             </div>
           </div>
         )}
 
         {errorMessage && (
-          <div className="rounded-[16px] border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm font-medium text-destructive">
-            {errorMessage}
+          <div className="rounded-[16px] border border-destructive/20 bg-destructive/10 px-4 py-3.5 text-[13px] font-semibold text-destructive animate-fade-slide-up shadow-sm">
+            <div className="flex items-start gap-2">
+              <div className="mt-0.5 shrink-0 rounded-full bg-destructive/20 p-1">
+                <X className="h-3 w-3" />
+              </div>
+              <p>{errorMessage}</p>
+            </div>
           </div>
         )}
 

@@ -18,7 +18,7 @@ import {
   User,
   X,
 } from "lucide-react";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useQuery, usePaginatedQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { App } from "@capacitor/app";
@@ -399,7 +399,9 @@ export default function HomeScreen({ onShopSelect, onNavigate, onLogout, custome
     { initialNumItems: 50 }
   );
   const notifications = notificationResults ?? [];
-  const unreadCount = notifications.filter((n) => !n.isRead).length || 0;
+  const unreadCount = useMemo(() => {
+    return notifications.filter((n) => !n.isRead).length || 0;
+  }, [notifications]);
 
   // Map Convex shop records to the local Shop type
   const shops: Shop[] = convexShops.map((s) => {

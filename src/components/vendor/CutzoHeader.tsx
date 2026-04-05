@@ -27,7 +27,17 @@ export default function CutzoHeader({
       <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/5 blur-2xl pointer-events-none" />
       <div className="absolute -left-10 bottom-0 h-32 w-32 rounded-full bg-cyan-400/10 blur-xl pointer-events-none" />
 
-      <div className="relative z-10 flex items-center justify-between gap-3">
+      {/* Brand water mark / logo */}
+      <div className="absolute top-5 left-5 z-20 flex items-baseline gap-1.5 opacity-90 pointer-events-none">
+        <h2 className="font-montserrat text-lg font-black tracking-wider text-white">
+          CUTZO
+        </h2>
+        <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-cyan-300">
+          For Business
+        </span>
+      </div>
+
+      <div className="relative z-10 flex items-center justify-between gap-3 mt-4">
         <div className="flex items-center gap-3">
           {showBackButton && onBack && (
             <motion.button

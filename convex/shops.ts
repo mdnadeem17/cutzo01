@@ -349,15 +349,22 @@ export const getShopById = query({
 });
 
 export const generateUploadUrl = mutation(async (ctx) => {
+  // SEC-04 FIX: Only authenticated users may generate a storage upload URL.
+  // Without this check, any anonymous caller could write arbitrary files to our storage.
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) throw new Error("Unauthenticated: you must be logged in to upload files.");
   return await ctx.storage.generateUploadUrl();
 });
 
-export const getImageUrl = mutation({
+// SEC-05 FIX: Changed from mutation to query — this only reads data and
+// should never have been a mutation (wastes write credits, bypasses cache).
+export const getImageUrl = query({
   args: { storageId: v.id("_storage") },
   handler: async (ctx, args) => {
     return await ctx.storage.getUrl(args.storageId);
   },
 });
+
 
 // Get slots booking counts for a specific shop
 export const getShopBookedSlots = query({

@@ -52,6 +52,7 @@ interface SetupDraft {
   gpsLocation: string;
   phone: string;
   authProvider: "phone" | "google";
+  termsAccepted: boolean;
 }
 
 const createDraft = (overrides?: Partial<SetupDraft>): SetupDraft => ({
@@ -61,6 +62,7 @@ const createDraft = (overrides?: Partial<SetupDraft>): SetupDraft => ({
   gpsLocation: "",
   phone: "",
   authProvider: "phone",
+  termsAccepted: false,
   ...overrides,
 });
 
@@ -153,6 +155,13 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
 
     if (Capacitor.isNativePlatform()) {
       try {
+        // Attempt to clear any stuck state before signing in
+        try {
+          await FirebaseAuthentication.signOut();
+        } catch (e) {
+          // ignore signout errors
+        }
+
         const result = await FirebaseAuthentication.signInWithGoogle();
         
         // CRITICAL BUG FIX: Native plugin does NOT automatically sync session
@@ -187,7 +196,12 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
         }
       } catch (error: any) {
         console.error("Firebase Native Google Sign-In error:", error);
-        setErrorMessage(formatError(error));
+        const errMsg = formatError(error);
+        if (errMsg.includes("No credentials available")) {
+          setErrorMessage("Google Sign-In is temporarily blocked due to multiple cancelled attempts, or no Google account is found on this device. Please wait a moment or add an account in your device settings.");
+        } else {
+          setErrorMessage(errMsg);
+        }
         setIsLoggingIn(false);
         hideLoading();
       }
@@ -253,6 +267,11 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
     const normalizedPhone = normalizePhone(setupDraft.phone);
     if (!normalizedPhone) {
       setErrorMessage("A valid 10-digit phone number is required.");
+      return;
+    }
+
+    if (!setupDraft.termsAccepted) {
+      setErrorMessage("You must agree to the Terms of Service & Privacy Policy to continue.");
       return;
     }
 
@@ -425,6 +444,23 @@ export default function CustomerAuthModal({ open, onClose, onAuthenticated }: Pr
                     placeholder="Enter the number"
                   />
                 </div>
+              </label>
+
+              <label className="flex items-start gap-3 mt-1 mb-2">
+                <input
+                  type="checkbox"
+                  checked={setupDraft.termsAccepted}
+                  onChange={(e) =>
+                    setSetupDraft((current) => ({
+                      ...current,
+                      termsAccepted: e.target.checked,
+                    }))
+                  }
+                  className="mt-1 h-5 w-5 rounded border-border accent-purple-600 outline-none"
+                />
+                <span className="text-xs font-medium text-muted-foreground leading-snug">
+                  I agree to the <a href="#" className="font-bold text-foreground hover:underline">Terms of Service</a> & <a href="#" className="font-bold text-foreground hover:underline">Privacy Policy</a>
+                </span>
               </label>
 
               <button

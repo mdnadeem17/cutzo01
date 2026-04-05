@@ -88,7 +88,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 
 type Tab = "home" | "activity" | "profile";
 type AppMode = "customer" | "vendor" | null;
-type AuthIntent = "profile" | "booking" | null;
+type AuthIntent = "profile" | "booking" | "home" | "timeSelect" | null;
 type NavDir = "forward" | "back";
 
 // Screens with a logical "parent" — going to a parent is a back navigation
@@ -342,6 +342,11 @@ function AppInner() {
   };
 
   const handleOpenCustomer = () => {
+    if (!customer) {
+      setAuthIntent("home");
+      setShowCustomerAuth(true);
+      return;
+    }
     setAppMode("customer");
     navigateTo("home", "forward");
   };
@@ -386,6 +391,15 @@ function AppInner() {
       setScreen("serviceSelect");
     }
 
+    if (authIntent === "timeSelect" && selectedShop) {
+      setScreen("timeSelect");
+    }
+
+    if (authIntent === "home") {
+      setAppMode("customer");
+      navigateTo("home", "forward");
+    }
+
     setAuthIntent(null);
   };
 
@@ -408,12 +422,6 @@ function AppInner() {
   };
 
   const handleBookNow = () => {
-    if (!customer) {
-      setAuthIntent("booking");
-      setShowCustomerAuth(true);
-      return;
-    }
-
     setScreen("serviceSelect");
   };
 
@@ -483,7 +491,14 @@ function AppInner() {
               selected={selectedServices}
               onToggle={handleServiceToggle}
               onBack={() => navigateTo("shopDetail", "back")}
-              onContinue={() => navigateTo("timeSelect")}
+              onContinue={() => {
+                if (!customer) {
+                  setAuthIntent("timeSelect");
+                  setShowCustomerAuth(true);
+                  return;
+                }
+                navigateTo("timeSelect");
+              }}
             />
           )}
 

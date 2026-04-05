@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Camera, ChevronRight, Image as ImageIcon, Loader2, LogOut, MapPin, Phone, Store, Trash2, User, X } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery, useConvex } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import CutzoHeader from "./CutzoHeader";
 import { VendorProfile } from "./types";
@@ -40,8 +40,8 @@ export default function ProfileScreen({ ownerId, profile, onSaveProfile, onLogou
   const phoneRef = useRef<HTMLInputElement>(null);
   const [focusField, setFocusField] = useState<"shopName" | "ownerName" | "address" | "phone" | null>(null);
 
+  const convex = useConvex();
   const generateUploadUrl = useMutation(api.shops.generateUploadUrl);
-  const getImageUrl = useMutation(api.shops.getImageUrl);
   const toggleShopStatusMutation = useMutation(api.shops.toggleShopStatus);
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
 
@@ -99,7 +99,8 @@ export default function ProfileScreen({ ownerId, profile, onSaveProfile, onLogou
       if (!result.ok) throw new Error(`Upload rejected: ${result.statusText}`);
 
       const { storageId } = await result.json();
-      const fullUrl = await getImageUrl({ storageId });
+      // SEC-05: getImageUrl is now a query, use the convex client directly
+      const fullUrl = await convex.query(api.shops.getImageUrl, { storageId });
       
       if (fullUrl) {
         onSaveProfile({

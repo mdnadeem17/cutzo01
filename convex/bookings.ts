@@ -192,8 +192,8 @@ export const getBookingsByCustomer = query({
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthenticated");
-    if (identity.subject !== args.customerId) throw new Error("Unauthorized");
+    if (!identity) return { page: [], isDone: true, continueCursor: "" };
+    if (identity.subject !== args.customerId) return { page: [], isDone: true, continueCursor: "" };
 
     if (!args.customerId) return { page: [], isDone: true, continueCursor: "" };
     
@@ -238,7 +238,7 @@ export const getShopBookingsByOwnerId = query({
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthenticated");
+    if (!identity) return { page: [], isDone: true, continueCursor: "" };
 
     if (!args.ownerId) {
       return { page: [], isDone: true, continueCursor: "" };
@@ -300,8 +300,8 @@ export const getUserBookings = query({
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthenticated");
-    if (identity.subject !== args.callerUid || args.callerUid !== args.customerId) throw new Error("Unauthorized");
+    if (!identity) return [];
+    if (identity.subject !== args.callerUid || args.callerUid !== args.customerId) return [];
 
     // Bug 3: use the index instead of a full table scan with .filter()
     return await ctx.db
@@ -319,7 +319,7 @@ export const getShopBookings = query({
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthenticated");
+    if (!identity) return { page: [], isDone: true, continueCursor: "" };
 
     const shop = await ctx.db.get(args.shopId);
     if (!shop) throw new Error("Shop not found");
@@ -515,7 +515,7 @@ export const completeBooking = mutation({
 
     await ctx.db.patch(args.bookingId, {
       status: "completed",
-      completedAt: Date.now().toString(),
+      completedAt: Date.now(), // LOG-05 FIX: store as number, not string
     });
 
     const existingStatus = await ctx.db

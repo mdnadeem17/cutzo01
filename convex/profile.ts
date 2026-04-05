@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 // ─── SAVED SHOPS ─────────────────────────────────────────────────────────
@@ -79,23 +79,31 @@ export const getActiveOffers = query({
   handler: async (ctx, args) => {
     const nowIso = new Date().toISOString();
     if (args.city) {
-      // Return specific to city
+      // DB-05 FIX: Use the compound index to filter by city AND expiry at DB level.
+      // This avoids fetching all offers for a city and filtering them in memory.
       const cityOffers = await ctx.db
         .query("offers")
-        .withIndex("by_city", (q) => q.eq("city", args.city))
+        .withIndex("by_city_expiry", (q) =>
+          q.eq("city", args.city!).gte("expiryDate", nowIso)
+        )
         .collect();
-      
-      // Bug 14: filter out expired offers before returning
-      const activeCity = cityOffers.filter(o => o.expiryDate > nowIso);
-      if (activeCity.length > 0) return activeCity;
+      if (cityOffers.length > 0) return cityOffers;
     }
-    // Fallback: return any global or local offers that haven't expired
-    const all = await ctx.db.query("offers").take(20);
-    return all.filter(o => o.expiryDate > nowIso);
+    // Fallback: return any global offers that haven't expired
+    const globalOffers = await ctx.db
+      .query("offers")
+      .withIndex("by_city_expiry", (q) =>
+        q.eq("city", "Global").gte("expiryDate", nowIso)
+      )
+      .take(20);
+    return globalOffers;
   },
 });
 
-export const seedOffers = mutation({
+// SEC-08 FIX: Changed from public mutation to internalMutation.
+// Previously any authenticated user could call this to inject arbitrary offers.
+// Now it can only be triggered from server-side code (cron jobs, internal actions).
+export const seedOffers = internalMutation({
   args: {},
   handler: async (ctx) => {
     const existing = await ctx.db.query("offers").take(1);
@@ -200,16 +208,21 @@ export const clearUserNotifications = mutation({
     if (!identity) throw new Error("Unauthenticated");
     if (identity.subject !== args.userId) throw new Error("Unauthorized");
 
-    // Bug 10: use .take(100) to avoid hitting transaction limits for users
-    // with large numbers of notifications. 100 is a safe practical cap.
+    // BUG-06 FIX: Convex mutations have a transaction document limit.
+    // We delete in batches of 100 per call and return `hasMore: true`
+    // so the frontend can call this again until all notifications are gone.
+    const BATCH_SIZE = 100;
     const notifications = await ctx.db
       .query("notifications")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .take(100);
+      .take(BATCH_SIZE);
     
     for (const n of notifications) {
       await ctx.db.delete(n._id);
     }
+
+    // If we filled the full batch there may be more remaining
+    return { hasMore: notifications.length === BATCH_SIZE };
   },
 });
 

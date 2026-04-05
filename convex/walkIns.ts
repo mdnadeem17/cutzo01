@@ -1,18 +1,21 @@
 import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { GenericQueryCtx } from "convex/server";
+import { DataModel } from "./_generated/dataModel";
 
-// Helper to fetch consolidated active sessions for a shop
-async function getActiveSessions(ctx: any, shopId: string) {
+// BUG-04 FIX: Replaced `any` types with proper Convex GenericQueryCtx<DataModel>
+// so TypeScript can catch field-name typos and missing fields at compile time.
+async function getActiveSessions(ctx: GenericQueryCtx<DataModel>, shopId: string) {
   const walkIns = await ctx.db
     .query("walkIns")
-    .withIndex("by_shop", (q: any) => q.eq("shopId", shopId))
-    .filter((q: any) => q.eq(q.field("status"), "active"))
+    .withIndex("by_shop", (q) => q.eq("shopId", shopId as any))
+    .filter((q) => q.eq(q.field("status"), "active"))
     .collect();
 
   const bookings = await ctx.db
     .query("bookings")
-    .withIndex("by_shop", (q: any) => q.eq("shopId", shopId))
-    .filter((q: any) => q.eq(q.field("status"), "active"))
+    .withIndex("by_shop", (q) => q.eq("shopId", shopId as any))
+    .filter((q) => q.eq(q.field("status"), "active"))
     .collect();
 
   const sessions = [];
@@ -20,7 +23,7 @@ async function getActiveSessions(ctx: any, shopId: string) {
   for (const w of walkIns) {
     sessions.push({
       id: w._id,
-      type: "walk-in",
+      type: "walk-in" as const,
       serviceName: w.serviceName,
       startTime: w.startTime,
       busyUntil: w.calculatedFinishTime,
@@ -28,21 +31,21 @@ async function getActiveSessions(ctx: any, shopId: string) {
   }
 
   for (const b of bookings) {
-    const totalDuration = b.services.reduce((acc: number, s: any) => acc + s.duration, 0) || 30;
-    // OTP verification marks it active, estimate start time is roughly otpCreatedAt or now
+    const totalDuration = b.services.reduce((acc, s) => acc + s.duration, 0) || 30;
     const startTime = b.otpCreatedAt || Date.now();
-    const busyUntil = startTime + (totalDuration * 60 * 1000);
+    const busyUntil = startTime + totalDuration * 60 * 1000;
     sessions.push({
       id: b._id,
-      type: "online",
-      serviceName: b.services.map((s: any) => s.name).join(", "),
-      startTime: startTime,
-      busyUntil: busyUntil,
+      type: "online" as const,
+      serviceName: b.services.map((s) => s.name).join(", "),
+      startTime,
+      busyUntil,
     });
   }
 
   return sessions.sort((a, b) => a.busyUntil - b.busyUntil);
 }
+
 
 // Get the current capacity and status of the shop
 export const getBarberStatus = query({
@@ -215,8 +218,10 @@ export const cancelWalkIn = mutation({
       throw new Error("Walk-in record not found.");
     }
 
-    // Hard delete or mark cancelled so it stops occupying capacity
-    await ctx.db.delete(args.walkInId);
+    // SEC-07 FIX: Soft-delete only \u2014 mark the walk-in as "cancelled" so the
+    // audit trail is preserved. Hard-deleting records hides revenue and
+    // prevents any future dispute resolution or analytics.
+    await ctx.db.patch(args.walkInId, { status: "cancelled" });
     
     return true;
   },
@@ -228,11 +233,14 @@ export const expireStaleBarberStatuses = internalMutation({
   handler: async (ctx) => {
     // Only cleans old walkIns now since barberStatus table is deprecated
     const now = Date.now();
+    // LOG-08 FIX: Reduced from 1 hour to 10 minutes past expiry.
+    // The previous 1-hour buffer could block customer bookings for 75+ minutes
+    // after the service was supposed to have ended.
     const staleWalkIns = await ctx.db
       .query("walkIns")
       .filter((q) => q.and(
         q.eq(q.field("status"), "active"),
-        q.lt(q.field("calculatedFinishTime"), now - (60 * 60 * 1000)) // 1 hour past expiry
+        q.lt(q.field("calculatedFinishTime"), now - (10 * 60 * 1000)) // 10 min past expiry
       ))
       .collect();
 

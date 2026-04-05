@@ -79,7 +79,10 @@ export default defineSchema({
     expiryDate: v.string(),
     city: v.string(),
     applicableShops: v.optional(v.array(v.string())),
-  }).index("by_city", ["city"]),
+  }).index("by_city", ["city"])
+    // DB-05 FIX: Added compound index so we can filter by city + expiry date
+    // at the database level instead of fetching all offers and filtering in JS.
+    .index("by_city_expiry", ["city", "expiryDate"]),
 
   notifications: defineTable({
     userId: v.string(),
@@ -116,9 +119,14 @@ export default defineSchema({
     otp: v.optional(v.number()),
     otpVerified: v.optional(v.boolean()),
     otpCreatedAt: v.optional(v.number()),
-    completedAt: v.optional(v.string())
+    // LOG-05 FIX: Changed from v.string() to v.number() so timestamps are
+    // properly comparable for cleanup crons and time-based queries.
+    completedAt: v.optional(v.number())
   }).index("by_shop_date_time", ["shopId", "date", "time"])
-    .index("by_customer", ["customerId", "date", "time"])
+    // LOG-07 FIX: Changed from ["customerId", "date", "time"] to just ["customerId"].
+    // The query only filters by customerId, and ordering by a 12-hour "time" string
+    // breaks chronological sorting. A simple index falls back to _creationTime ordering.
+    .index("by_customer", ["customerId"])
     .index("by_shop", ["shopId"]),
 
   reviews: defineTable({
